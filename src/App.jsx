@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
+import { supabase } from "./supabase"; // 🔌 Notre fameux pont Supabase !
 import { 
   dDate, maxPromo, PROMS, isFamsExempt, SPORTS, Sp, DEV_EMAIL,
-  U0, EV0, NW0, MA0, GR0, BUR0, LOCS0, MUSCU0, INV0, FB0,
+  NW0, GR0, BUR0, LOCS0, MUSCU0, INV0, FB0,
   dn, isDev, isCap, S, btnStyle 
 } from "./config";
 import { Lbl, FamsSelect, Av, UserProfileModal } from "./components/Shared";
@@ -194,12 +195,63 @@ function BottomNav({active, onChange, user}) {
 }
 
 export default function UAIApp() {
+  const [users, setUsers] = useState([]); 
+  const [events, setEvents] = useState([]);
+  const [matches, setMatches] = useState([]);
+  const [isDbLoading, setIsDbLoading] = useState(true);
+
+  // Chargement des données depuis Supabase au lancement
   useEffect(() => {
+    async function fetchDatabase() {
+      try {
+        const { data: dbUsers } = await supabase.from('users').select('*');
+        const { data: dbEvents } = await supabase.from('events').select('*');
+        const { data: dbMatches } = await supabase.from('matches').select('*');
+
+        if (dbUsers) {
+          // On reformate les noms de colonnes (Supabase met tout en minuscule par défaut)
+          const formattedUsers = dbUsers.map(u => ({
+            ...u,
+            bannedSports: u.bannedsports || [],
+            adminSports: u.adminsports || [],
+            licenceNum: u.licencenum || "",
+            licenceFile: u.licencefile || null,
+            mutedChats: u.mutedchats || []
+          }));
+          setUsers(formattedUsers);
+
+          // Auto-connexion si on était déjà connecté
+          const savedId = localStorage.getItem("uai_user");
+          if (savedId) {
+            const found = formattedUsers.find(user => String(user.id) === savedId);
+            if (found) setCur(found);
+          }
+        }
+
+        if (dbEvents) {
+          setEvents(dbEvents.map(e => ({ ...e, sportId: e.sportid })));
+        }
+
+        if (dbMatches) {
+          setMatches(dbMatches.map(m => ({
+            ...m, sportId: m.sportid, planningId: m.planningid,
+            scoreBordels: m.scorebordels, scoreOpponent: m.scoreopponent,
+            likedBy: m.likedby || []
+          })));
+        }
+      } catch (error) {
+        console.error("Erreur Supabase:", error);
+      } finally {
+        setIsDbLoading(false);
+      }
+    }
+    
+    fetchDatabase();
+    
     document.title = "UAI Bordel's";
     let link = document.querySelector("link[rel~='icon']");
     if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
     link.href = '/logo.png';
-
     const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Barlow:wght@400;500;600;700&display=swap";
     document.head.appendChild(l);
     const style = document.createElement("style");
@@ -219,10 +271,12 @@ export default function UAIApp() {
     document.head.appendChild(style); return () => { document.head.removeChild(l); document.head.removeChild(style); }
   }, []);
 
-  const [users, setUsers] = useState(U0); const [cur, setCur] = useState(null);
+  const [cur, setCur] = useState(null);
   const [tab, setTab] = useState("planning"); const [slideDir, setSlideDir] = useState("fade-in");
-  const [viewProfileId, setViewProfileId] = useState(null); const [events, setEvents] = useState(EV0);
-  const [news, setNews] = useState(NW0); const [matches, setMatches] = useState(MA0);
+  const [viewProfileId, setViewProfileId] = useState(null); 
+  
+  // Ces données restent en local pour l'instant avant qu'on crée leurs tableaux Supabase
+  const [news, setNews] = useState(NW0); 
   const [bureau, setBureau] = useState(BUR0); const [locations, setLocations] = useState(LOCS0);
   const [partners, setPartners] = useState([{id:1, name:"Boulangerie Le Fournil", msg:"Merci pour les viennoiseries lors des tournois !", offer:"-10% sur présentation de la licence UAI"}]);
   const [groups, setGroups] = useState(GR0); const [chat, setChat] = useState({});
@@ -253,7 +307,6 @@ export default function UAIApp() {
     const distanceY = touchStart.y - touchEndObj.clientY;
     const timeDiff = Date.now() - touchStart.time;
 
-    // 🎯 FIX UX : Sensibilité parfaitement équilibrée (30px de balayage requis, 800ms de tolérance, 1.2 de ratio droitier)
     if (timeDiff < 800 && Math.abs(distanceX) > 30 && Math.abs(distanceX) > Math.abs(distanceY) * 1.2) {
       const currentIndex = tabsList.indexOf(tab);
       if (distanceX > 0 && currentIndex < tabsList.length - 1) { changeTab(tabsList[currentIndex + 1]); }
@@ -294,23 +347,14 @@ export default function UAIApp() {
           }
        }
     });
-
-    (groups||[]).forEach(g => { 
-       if ((g.requests||[]).length > 0 && (user.adminSports||[]).includes(g.sportId)) {
-          const sportName = Sp && Sp[g.sportId] ? Sp[g.sportId].l : g.sportId;
-          notifs.push({msg:`👤 ${g.requests.length} demande(s) en attente pour rejoindre le groupe ${sportName} !`});
-       }
-    });
-
-    (challenges||[]).filter(c => c.status === "pending").forEach(c => {
-       const targetTeam = (teams||[]).find(t => t.id === Number(c.vid));
-       if (targetTeam && (targetTeam.captainId === user.id || (targetTeam.members||[]).includes(user.id))) {
-         const challenger = (teams||[]).find(t => t.id === Number(c.cid));
-         const sportName = Sp && Sp[c.sportId] ? Sp[c.sportId].l : c.sportId;
-         notifs.push({msg:`⚔️ L'équipe ${challenger?.name || "Inconnue"} vous a défié au ${sportName} !`});
-       }
-    });
   }
+
+  // Écran de chargement pendant que Supabase répond
+  if (isDbLoading) return (
+    <div style={{minHeight:"100dvh",background:S.bg,display:"flex",alignItems:"center",justifyContent:"center",color:S.red,fontFamily:"'Barlow Condensed'",fontSize:32,fontWeight:900,letterSpacing:2}}>
+      CHARGEMENT...
+    </div>
+  );
 
   if (!user) return <AuthScreen users={users} setUsers={setUsers} onLogin={u=>{setCur(u);setTab("planning");}}/>;
 

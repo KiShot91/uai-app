@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { supabase } from "../supabase"; // 🔌 Notre pont Supabase pour sauvegarder en ligne
 import { parseFams, readFile, ini, dn, S, btnStyle, SPORTS, PROMS, maxPromo } from "../config";
 import { SecTitle, SubNav, Card, Lbl, FamsSelect } from "../components/Shared";
 
@@ -10,38 +11,99 @@ export default function AccountTab({user, setCurrentUser, users, setUsers, feedb
   const [form, setForm] = useState({nom:user.nom||"",prenom:user.prenom||"",bucque:user.bucque||"",fams:parseFams(user.fams),proms:user.proms||"225",phone:user.phone||"",bio:user.bio||"",sexe:user.sexe||"Homme",sports:[...(user.sports||[])],bannedSports:[...(user.bannedSports||[])], licenceNum:user.licenceNum||""});
   
   const fileRef = useRef(null);
-  const licenceRef = useRef(null); // 📄 Réf pour l'upload de la licence
+  const licenceRef = useRef(null);
   
   const up = (k,v) => setForm(p=>({...p,[k]:v}));
   
-  const save = () => { const updated = {...user,...form}; setUsers(p=>p.map(u=>u.id===user.id?updated:u)); setCurrentUser(updated); setEditing(false); alert("Modifications enregistrées !"); };
-  const handleFile = e => { const f=e.target.files[0]; if(!f)return; readFile(f,data=>{const u={...user,avatar:data};setUsers(p=>p.map(x=>x.id===user.id?u:x));setCurrentUser(u);}); };
+  // 🚀 SAUVEGARDE DU PROFIL EN LIGNE
+  const save = async () => { 
+    try {
+      const updated = {...user,...form}; 
+      const { error } = await supabase.from('users').update({
+        nom: form.nom, prenom: form.prenom, bucque: form.bucque,
+        fams: form.fams, proms: form.proms, phone: form.phone,
+        bio: form.bio, sexe: form.sexe, licencenum: form.licenceNum
+      }).eq('id', user.id);
 
-  // 📄 Gestion de l'upload de licence
+      if (error) throw error;
+
+      setUsers(p=>p.map(u=>u.id===user.id?updated:u)); 
+      setCurrentUser(updated); 
+      setEditing(false); 
+      alert("Modifications enregistrées !"); 
+    } catch (err) {
+      console.error(err);
+      alert("Erreur de connexion au serveur.");
+    }
+  };
+
+  // 🚀 UPLOAD DE L'AVATAR EN LIGNE
+  const handleFile = e => { 
+    const f=e.target.files[0]; 
+    if(!f)return; 
+    readFile(f, async data => {
+      try {
+        const { error } = await supabase.from('users').update({ avatar: data }).eq('id', user.id);
+        if (error) throw error;
+
+        const u={...user,avatar:data};
+        setUsers(p=>p.map(x=>x.id===user.id?u:x));
+        setCurrentUser(u);
+      } catch (err) {
+        console.error(err);
+        alert("Erreur lors de l'envoi de l'image.");
+      }
+    }); 
+  };
+
+  // 🚀 UPLOAD DE LA LICENCE EN LIGNE
   const handleLicenceFile = e => { 
      const f=e.target.files[0]; 
      if(!f)return; 
-     readFile(f, data => {
-        const u = {...user, licenceFile: data, licence: true};
-        setUsers(p => p.map(x => x.id===user.id ? u : x));
-        setCurrentUser(u);
-        alert("Licence uploadée avec succès !");
+     readFile(f, async data => {
+        try {
+          const { error } = await supabase.from('users').update({ licencefile: data, licence: true }).eq('id', user.id);
+          if (error) throw error;
+
+          const u = {...user, licenceFile: data, licence: true};
+          setUsers(p => p.map(x => x.id===user.id ? u : x));
+          setCurrentUser(u);
+          alert("Licence uploadée avec succès !");
+        } catch (err) {
+          console.error(err);
+          alert("Erreur lors de l'envoi du document.");
+        }
      }); 
   };
 
-  const togglePlay = (sid) => {
-    const isPlayed = user.sports?.includes(sid);
-    const newSports = isPlayed ? user.sports.filter(x=>x!==sid) : [...(user.sports||[]), sid];
-    const newBanned = (user.bannedSports||[]).filter(x=>x!==sid);
-    const u = {...user, sports: newSports, bannedSports: newBanned};
-    setUsers(p => p.map(x => x.id===u.id ? u : x)); setCurrentUser(u);
+  // 🚀 SAUVEGARDE DES SPORTS JOUÉS EN LIGNE
+  const togglePlay = async (sid) => {
+    try {
+      const isPlayed = user.sports?.includes(sid);
+      const newSports = isPlayed ? user.sports.filter(x=>x!==sid) : [...(user.sports||[]), sid];
+      const newBanned = (user.bannedSports||[]).filter(x=>x!==sid);
+      
+      const { error } = await supabase.from('users').update({ sports: newSports, bannedsports: newBanned }).eq('id', user.id);
+      if (error) throw error;
+
+      const u = {...user, sports: newSports, bannedSports: newBanned};
+      setUsers(p => p.map(x => x.id===u.id ? u : x)); setCurrentUser(u);
+    } catch (err) { console.error(err); alert("Erreur serveur."); }
   };
-  const toggleBan = (sid) => {
-    const isBanned = user.bannedSports?.includes(sid);
-    const newBanned = isBanned ? user.bannedSports.filter(x=>x!==sid) : [...(user.bannedSports||[]), sid];
-    const newSports = (user.sports||[]).filter(x=>x!==sid);
-    const u = {...user, sports: newSports, bannedSports: newBanned};
-    setUsers(p => p.map(x => x.id===u.id ? u : x)); setCurrentUser(u);
+
+  // 🚀 SAUVEGARDE DES SPORTS BANNIS EN LIGNE
+  const toggleBan = async (sid) => {
+    try {
+      const isBanned = user.bannedSports?.includes(sid);
+      const newBanned = isBanned ? user.bannedSports.filter(x=>x!==sid) : [...(user.bannedSports||[]), sid];
+      const newSports = (user.sports||[]).filter(x=>x!==sid);
+      
+      const { error } = await supabase.from('users').update({ sports: newSports, bannedsports: newBanned }).eq('id', user.id);
+      if (error) throw error;
+
+      const u = {...user, sports: newSports, bannedSports: newBanned};
+      setUsers(p => p.map(x => x.id===u.id ? u : x)); setCurrentUser(u);
+    } catch (err) { console.error(err); alert("Erreur serveur."); }
   };
 
   const handleSendFeedback = () => {
@@ -54,7 +116,6 @@ export default function AccountTab({user, setCurrentUser, users, setUsers, feedb
   return (
     <div className="fade-in" style={{maxWidth: 800, margin:"0 auto", paddingBottom:20}}>
       <SecTitle title="Mon Compte"/>
-      {/* 📄 Le nouvel onglet Licence est ici */}
       <SubNav tabs={[["profile","Profil"],["sports","Sports"],["licence","Licence"],["settings","Réglages"]]} active={tab} onChange={setTab}/>
 
       {tab==="profile"&&(
@@ -124,7 +185,6 @@ export default function AccountTab({user, setCurrentUser, users, setUsers, feedb
         </div>
       )}
 
-      {/* 📄 ONGLET LICENCE COMPLET */}
       {tab==="licence"&&(
         <div className="fade-in" style={{padding:"0 20px"}}>
           <Card>
@@ -134,13 +194,19 @@ export default function AccountTab({user, setCurrentUser, users, setUsers, feedb
                 {user.licenceFile ? (
                   <div className="fade-in">
                      <div style={{color:"#4ade80", fontSize:14, fontWeight:700, marginBottom:14, display:"flex", alignItems:"center", gap:8}}>
-                        ✅ Document uploadé et valide !
+                       ✅ Document uploadé et valide !
                      </div>
                      <img src={user.licenceFile} style={{width:"100%", borderRadius:8, border:"1px solid #333", marginBottom:14}} alt="Licence" />
-                     <button onClick={()=>{
+                     <button onClick={async ()=>{
                         if(confirm("Voulez-vous vraiment supprimer votre licence ?")) {
-                           const u = {...user, licenceFile:null, licence:false};
-                           setUsers(p=>p.map(x=>x.id===u.id?u:x)); setCurrentUser(u);
+                           try {
+                             // 🚀 SUPPRESSION DE LA LICENCE EN LIGNE
+                             const { error } = await supabase.from('users').update({ licencefile: null, licence: false }).eq('id', user.id);
+                             if (error) throw error;
+
+                             const u = {...user, licenceFile:null, licence:false};
+                             setUsers(p=>p.map(x=>x.id===u.id?u:x)); setCurrentUser(u);
+                           } catch (err) { console.error(err); alert("Erreur lors de la suppression."); }
                         }
                      }} style={{...btnStyle("#1a0505","#EF4444"), border:`1px solid ${S.redBorder}`}}>Supprimer le document</button>
                   </div>
@@ -185,7 +251,6 @@ export default function AccountTab({user, setCurrentUser, users, setUsers, feedb
             </div>
           </Card>
 
-          {/* DÉPLACEMENT DE LA SECTION FEEDBACK DANS RÉGLAGES */}
           <Card style={{marginBottom:14}}>
             <div style={{padding:"16px"}}>
               <div style={{fontFamily:"'Barlow Condensed'",fontSize:17,fontWeight:900,color:S.red,letterSpacing:2,marginBottom:14}}>NOUS AIDER (FEEDBACK)</div>
@@ -200,11 +265,17 @@ export default function AccountTab({user, setCurrentUser, users, setUsers, feedb
               <div style={{fontFamily:"'Barlow Condensed'",fontSize:17,fontWeight:900,color:S.red,letterSpacing:2,marginBottom:14}}>CHANGER MON MOT DE PASSE</div>
               <Lbl t="Nouveau mot de passe" />
               <input type="password" style={{...S.inp, marginBottom:14}} value={newPwd} onChange={e=>setNewPwd(e.target.value)} />
-              <button onClick={() => {
+              <button onClick={async () => {
                 if(newPwd) {
-                  const u = {...user, password: newPwd};
-                  setUsers(p => p.map(x => x.id===user.id ? u : x));
-                  setCurrentUser(u); alert("Mot de passe modifié avec succès !"); setNewPwd("");
+                  try {
+                    // 🚀 SAUVEGARDE DU MOT DE PASSE EN LIGNE
+                    const { error } = await supabase.from('users').update({ password: newPwd }).eq('id', user.id);
+                    if (error) throw error;
+                    
+                    const u = {...user, password: newPwd};
+                    setUsers(p => p.map(x => x.id===user.id ? u : x));
+                    setCurrentUser(u); alert("Mot de passe modifié avec succès !"); setNewPwd("");
+                  } catch (err) { console.error(err); alert("Erreur serveur."); }
                 }
               }} style={{...btnStyle("#1a0505","#EF4444"),border:`1px solid ${S.redBorder}`,marginBottom:8}}>Mettre à jour le mot de passe</button>
             </div>

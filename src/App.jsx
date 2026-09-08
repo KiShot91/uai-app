@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "./supabase"; // 🔌 Notre fameux pont Supabase !
+import { supabase } from "./supabase"; // 🔌 Notre pont Supabase
 import { 
   dDate, maxPromo, PROMS, isFamsExempt, SPORTS, Sp, DEV_EMAIL,
   NW0, GR0, BUR0, LOCS0, MUSCU0, INV0, FB0,
@@ -34,15 +34,56 @@ function AuthScreen({users, setUsers, onLogin}) {
     if(u) { onLogin(u); if(remember) localStorage.setItem("uai_user", u.id); } 
     else setErr("Email ou mot de passe incorrect");
   };
-  const register = () => {
+
+  // NOUVELLE FONCTION REGISTER AVEC SUPABASE
+  const register = async () => {
     if (!f.nom||!f.prenom||!f.email||!f.password||!f.sexe||!f.bucque||!f.phone||!f.proms) return setErr("Remplissez tous les champs obligatoires *");
     if (!isFamsExempt(f.proms) && f.fams.length===0) return setErr(`La Fam's est obligatoire (sauf pour la Bo ${maxPromo} jusqu'au 7 Nov)`);
     if (!f.rgpd) return setErr("Vous devez accepter les conditions d'utilisation des données.");
 
     const role = f.email.toLowerCase()===DEV_EMAIL ? "developer" : "user";
-    const nu = {...f, id:Date.now(), adminSports:[], role, bio:"", avatar:null, licenceNum:"", licence:false, bannedSports:[], mutedChats:[]};
-    setUsers(p => [...p, nu]); onLogin(nu);
+    
+    // On prépare le nouveau profil pour la base de données
+    const nu = {
+      id: Date.now(),
+      email: f.email,
+      password: f.password,
+      nom: f.nom,
+      prenom: f.prenom,
+      bucque: f.bucque,
+      fams: f.fams,
+      proms: f.proms,
+      sexe: f.sexe,
+      sports: f.sports,
+      bannedsports: [],
+      adminsports: [],
+      role: role,
+      phone: f.phone,
+      bio: "",
+      licence: false,
+      mutedchats: []
+    };
+
+    try {
+      // 🚀 L'ÉCRITURE VERS SUPABASE
+      const { error } = await supabase.from('users').insert([nu]);
+      
+      if (error) {
+        if (error.code === '23505') return setErr("Cet email est déjà utilisé.");
+        throw error;
+      }
+
+      // Si Supabase valide, on connecte le Gadzart !
+      const localNu = {...nu, bannedSports:[], adminSports:[], mutedChats:[]};
+      setUsers(p => [...p, localNu]); 
+      onLogin(localNu);
+      
+    } catch (err) {
+      console.error(err);
+      setErr("Erreur de connexion au serveur.");
+    }
   };
+
   const sendReset = () => { if(!resetContact) return setErr("Entrez une information valide"); setResetSent(true); setErr(""); }
   const handleKeyDown = (e) => { if (e.key === "Enter") { if (mode === "login") login(); else if (mode === "register") register(); else if (mode==="forgot") sendReset(); } }
 

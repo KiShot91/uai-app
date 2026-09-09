@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { supabase } from "../supabase"; // 🔌 Notre pont Supabase
 import { canEdit, isDev, isBurs, isCap, SPORTS, Sp, S, btnStyle } from "../config";
 import { SecTitle, AddBtn, Lbl, LocationSelect, LocationLink } from "../components/Shared";
 
@@ -42,7 +43,7 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
   const [showTrain, setShowTrain] = useState(true);
   const [showChallenge, setShowChallenge] = useState(false);
   const [sportFlt, setSportFlt] = useState([]); 
-  const [locFlt, setLocFlt] = useState([]);     
+  const [locFlt, setLocFlt] = useState([]);      
   const [showAdd, setShowAdd] = useState(false);
   const [editEv, setEditEv] = useState(null);
   const [viewEv, setViewEv] = useState(null); 
@@ -79,32 +80,96 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
   if (ultraSportItem) sportsFiltresDispos.push(ultraSportItem);
   const lieuxFiltresDispos = [...(locations||[])].sort((a,b) => String(a).localeCompare(String(b), "fr", {sensitivity:"base"}));
 
-  const handleSaveEv = () => {
+  // 🚀 SAUVEGARDE / CRÉATION D'UN ÉVÉNEMENT VERS SUPABASE
+  const handleSaveEv = async () => {
     if (!form.date||!form.time||!form.location||!canEdit(user,form.sportId,bureau)) return;
     const evId = editEv || Date.now();
-    const newEv = {...form, id: evId, dur:+form.dur||90};
+    const durNum = +form.dur || 90;
     
-    if (editEv) setEvents(p => p.map(e => e.id===editEv ? newEv : e));
-    else setEvents(p => [...p, newEv]);
+    // Format attendu par Supabase (attention aux minuscules pour sportid)
+    const dbPayload = {
+      id: evId,
+      sportid: form.sportId,
+      date: form.date,
+      time: form.time,
+      dur: durNum,
+      location: form.location,
+      type: form.type
+    };
 
-    if (setMatches && (form.type === "match" || form.type === "tournament")) {
-       setMatches(p => {
-          const exists = p.find(m => m.id === evId || m.planningId === evId);
-          if (exists) {
-             return p.map(m => (m.id === evId || m.planningId === evId) ? {...m, sportId: form.sportId, date: form.date, time: form.time, location: form.location, type: form.type==="tournament"?"Tournoi":"Amical"} : m);
-          } else {
-             return [...p, {id: evId, planningId: evId, sportId: form.sportId, opponent: "À définir", date: form.date, time: form.time, location: form.location, type: form.type==="tournament"?"Tournoi":"Amical", home: true, scoreBordels: null, scoreOpponent: null, likes:0, likedBy:[], comments:[]}];
-          }
-       });
+    try {
+      if (editEv) {
+        // Mise à jour
+        const { error } = await supabase.from('events').update(dbPayload).eq('id', editEv);
+        if (error) throw error;
+        setEvents(p => p.map(e => e.id === editEv ? {...form, id: evId, dur: durNum} : e));
+      } else {
+        // Insertion
+        const { error } = await supabase.from('events').insert([dbPayload]);
+        if (error) throw error;
+        setEvents(p => [...p, {...form, id: evId, dur: durNum}]);
+      }
+
+      // Gestion synchro Matchs si c'est un match ou tournoi
+      if (setMatches && (form.type === "match" || form.type === "tournament")) {
+         const matchType = form.type === "tournament" ? "Tournoi" : "Amical";
+         const existingMatch = matches.find(m => m.id === evId || m.planningId === evId);
+
+         if (existingMatch) {
+            await supabase.from('matches').update({
+               sportid: form.sportId, date: form.date, time: form.time, location: form.location, type: matchType
+            }).eq('id', existingMatch.id);
+
+            setMatches(p => p.map(m => (m.id === evId || m.planningId === evId) ? {...m, sportId: form.sportId, date: form.date, time: form.time, location: form.location, type: matchType} : m));
+         } else {
+            const newMatchPayload = {
+               id: evId,
+               planningid: evId,
+               sportid: form.sportId,
+               opponent: "À définir",
+               date: form.date,
+               time: form.time,
+               location: form.location,
+               type: matchType,
+               home: true,
+               scorebordels: null,
+               scoreopponent: null,
+               likes: 0,
+               likedby: [],
+               comments: []
+            };
+            await supabase.from('matches').insert([newMatchPayload]);
+            setMatches(p => [...p, {id: evId, planningId: evId, sportId: form.sportId, opponent: "À définir", date: form.date, time: form.time, location: form.location, type: matchType, home: true, scoreBordels: null, scoreOpponent: null, likes:0, likedBy:[], comments:[]}]);
+         }
+      }
+
+      setShowAdd(false); 
+      setEditEv(null);
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de l'enregistrement de l'événement.");
     }
-    setShowAdd(false); setEditEv(null);
   };
 
-  const delEv = (id) => { 
+  // 🚀 SUPPRESSION D'UN ÉVÉNEMENT EN LIGNE
+  const delEv = async (id) => { 
     if(confirm("Supprimer ce créneau ?")) {
-       setEvents(p=>p.filter(e=>e.id!==id)); 
-       if(setMatches) setMatches(p=>p.filter(m=>m.id!==id && m.planningId!==id));
-       setShowAdd(false); setEditEv(null);
+       try {
+         const { error } = await supabase.from('events').delete().eq('id', id);
+         if (error) throw error;
+
+         if(setMatches) {
+            await supabase.from('matches').delete().or(`id.eq.${id},planningid.eq.${id}`);
+            setMatches(p => p.filter(m => m.id !== id && m.planningId !== id));
+         }
+
+         setEvents(p => p.filter(e => e.id !== id)); 
+         setShowAdd(false); 
+         setEditEv(null);
+       } catch (err) {
+         console.error(err);
+         alert("Erreur lors de la suppression.");
+       }
     }
   }
 
@@ -243,9 +308,9 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
       <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0 20px 10px"}}>
          <div style={{fontSize:13, fontWeight:700, color:"#ccc", textTransform:"uppercase"}}>Sem. du {ws.toLocaleDateString("fr-FR",{day:"numeric",month:"short"})}</div>
          <div style={{display:"flex", gap:8, alignItems:"center"}}>
-           <button onClick={()=>setWeekOffset(v=>v-1)} style={{background:"#1a1a1a",border:"1px solid #333",color:"white",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}>{"<"}</button>
-           <span style={{fontSize:12, fontWeight:700, color:weekOffset===0?S.red:"#888", width: 70, textAlign:"center"}}>{weekLabel}</span>
-           <button onClick={()=>setWeekOffset(v=>v+1)} style={{background:"#1a1a1a",border:"1px solid #333",color:"white",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}>{">"}</button>
+            <button onClick={()=>setWeekOffset(v=>v-1)} style={{background:"#1a1a1a",border:"1px solid #333",color:"white",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}>{"<"}</button>
+            <span style={{fontSize:12, fontWeight:700, color:weekOffset===0?S.red:"#888", width: 70, textAlign:"center"}}>{weekLabel}</span>
+            <button onClick={()=>setWeekOffset(v=>v+1)} style={{background:"#1a1a1a",border:"1px solid #333",color:"white",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}>{">"}</button>
          </div>
       </div>
 
@@ -325,13 +390,13 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
                     return (
                       <div key={ev.id} onClick={()=>handleEventClick(ev)} style={{position:"absolute",left:`${ev._l}%`,width:`calc(${ev._w}% - 2px)`,top:ev._start,height:ev._end - ev._start,background:`${c}25`,border:`1px solid ${c}55`,borderRadius:8,padding:"6px",overflow:"hidden",zIndex:2,cursor:"pointer",display:"flex",flexDirection:"column",boxSizing:"border-box"}}>
                         <div style={{display:"flex", flexDirection:"column", height:"100%"}}>
-                           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                             <div style={{fontSize:14,fontWeight:900,color:c,textTransform:"uppercase",lineHeight:1.1,fontFamily:"'Barlow Condensed'"}}>{Sp[ev.sportId]?.l||ev.sportId}</div>
-                             <div style={{fontSize:9,fontWeight:800,color:"#fff",background:"rgba(0,0,0,0.3)",padding:"2px 4px",borderRadius:4,flexShrink:0, textAlign:"center", lineHeight:1.1, marginLeft:4}}>{ev.time}<br/>-<br/>{endTimeStrLocal(ev.time,ev.dur)}</div>
-                           </div>
-                           <div style={{fontSize:11,fontWeight:800,color:"#fff", marginTop: "6px"}}>{LOCAL_TL[ev.type] || ev.type}</div>
-                           {ev.title && ev.title !== (LOCAL_TL[ev.type] || ev.type) && <div style={{fontSize:10,color:"#eee", marginTop: 2, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>{ev.title}</div>}
-                           <div style={{fontSize:10,color:"#ccc", marginTop:"auto", whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>📍 {ev.location}</div>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                              <div style={{fontSize:14,fontWeight:900,color:c,textTransform:"uppercase",lineHeight:1.1,fontFamily:"'Barlow Condensed'"}}>{Sp[ev.sportId]?.l||ev.sportId}</div>
+                              <div style={{fontSize:9,fontWeight:800,color:"#fff",background:"rgba(0,0,0,0.3)",padding:"2px 4px",borderRadius:4,flexShrink:0, textAlign:"center", lineHeight:1.1, marginLeft:4}}>{ev.time}<br/>-<br/>{endTimeStrLocal(ev.time,ev.dur)}</div>
+                            </div>
+                            <div style={{fontSize:11,fontWeight:800,color:"#fff", marginTop: "6px"}}>{LOCAL_TL[ev.type] || ev.type}</div>
+                            {ev.title && ev.title !== (LOCAL_TL[ev.type] || ev.type) && <div style={{fontSize:10,color:"#eee", marginTop: 2, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis"}}>{ev.title}</div>}
+                            <div style={{fontSize:10,color:"#ccc", marginTop:"auto", whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>📍 {ev.location}</div>
                         </div>
                       </div>
                     );

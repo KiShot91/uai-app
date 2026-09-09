@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { supabase } from "../supabase"; // 🔌 Notre pont Supabase pour sauvegarder en ligne
+import { supabase } from "../supabase";
 import { parseFams, readFile, ini, dn, S, btnStyle, SPORTS, PROMS, maxPromo } from "../config";
 import { SecTitle, SubNav, Card, Lbl, FamsSelect } from "../components/Shared";
 
@@ -15,15 +15,15 @@ export default function AccountTab({user, setCurrentUser, users, setUsers, feedb
   
   const up = (k,v) => setForm(p=>({...p,[k]:v}));
   
-  // 🚀 SAUVEGARDE DU PROFIL EN LIGNE
   const save = async () => { 
     try {
       const updated = {...user,...form}; 
+      // 🎯 ICI : On cible par EMAIL au lieu de l'ID
       const { error } = await supabase.from('users').update({
         nom: form.nom, prenom: form.prenom, bucque: form.bucque,
         fams: form.fams, proms: form.proms, phone: form.phone,
         bio: form.bio, sexe: form.sexe, licencenum: form.licenceNum
-      }).eq('id', user.id);
+      }).eq('email', user.email);
 
       if (error) throw error;
 
@@ -37,13 +37,12 @@ export default function AccountTab({user, setCurrentUser, users, setUsers, feedb
     }
   };
 
-  // 🚀 UPLOAD DE L'AVATAR EN LIGNE
   const handleFile = e => { 
     const f=e.target.files[0]; 
     if(!f)return; 
     readFile(f, async data => {
       try {
-        const { error } = await supabase.from('users').update({ avatar: data }).eq('id', user.id);
+        const { error } = await supabase.from('users').update({ avatar: data }).eq('email', user.email);
         if (error) throw error;
 
         const u={...user,avatar:data};
@@ -56,13 +55,12 @@ export default function AccountTab({user, setCurrentUser, users, setUsers, feedb
     }); 
   };
 
-  // 🚀 UPLOAD DE LA LICENCE EN LIGNE
   const handleLicenceFile = e => { 
      const f=e.target.files[0]; 
      if(!f)return; 
      readFile(f, async data => {
         try {
-          const { error } = await supabase.from('users').update({ licencefile: data, licence: true }).eq('id', user.id);
+          const { error } = await supabase.from('users').update({ licencefile: data, licence: true }).eq('email', user.email);
           if (error) throw error;
 
           const u = {...user, licenceFile: data, licence: true};
@@ -76,14 +74,13 @@ export default function AccountTab({user, setCurrentUser, users, setUsers, feedb
      }); 
   };
 
-  // 🚀 SAUVEGARDE DES SPORTS JOUÉS EN LIGNE
   const togglePlay = async (sid) => {
     try {
       const isPlayed = user.sports?.includes(sid);
       const newSports = isPlayed ? user.sports.filter(x=>x!==sid) : [...(user.sports||[]), sid];
       const newBanned = (user.bannedSports||[]).filter(x=>x!==sid);
       
-      const { error } = await supabase.from('users').update({ sports: newSports, bannedsports: newBanned }).eq('id', user.id);
+      const { error } = await supabase.from('users').update({ sports: newSports, bannedsports: newBanned }).eq('email', user.email);
       if (error) throw error;
 
       const u = {...user, sports: newSports, bannedSports: newBanned};
@@ -91,14 +88,13 @@ export default function AccountTab({user, setCurrentUser, users, setUsers, feedb
     } catch (err) { console.error(err); alert("Erreur serveur."); }
   };
 
-  // 🚀 SAUVEGARDE DES SPORTS BANNIS EN LIGNE
   const toggleBan = async (sid) => {
     try {
       const isBanned = user.bannedSports?.includes(sid);
       const newBanned = isBanned ? user.bannedSports.filter(x=>x!==sid) : [...(user.bannedSports||[]), sid];
       const newSports = (user.sports||[]).filter(x=>x!==sid);
       
-      const { error } = await supabase.from('users').update({ sports: newSports, bannedsports: newBanned }).eq('id', user.id);
+      const { error } = await supabase.from('users').update({ sports: newSports, bannedsports: newBanned }).eq('email', user.email);
       if (error) throw error;
 
       const u = {...user, sports: newSports, bannedSports: newBanned};
@@ -200,8 +196,7 @@ export default function AccountTab({user, setCurrentUser, users, setUsers, feedb
                      <button onClick={async ()=>{
                         if(confirm("Voulez-vous vraiment supprimer votre licence ?")) {
                            try {
-                             // 🚀 SUPPRESSION DE LA LICENCE EN LIGNE
-                             const { error } = await supabase.from('users').update({ licencefile: null, licence: false }).eq('id', user.id);
+                             const { error } = await supabase.from('users').update({ licencefile: null, licence: false }).eq('email', user.email);
                              if (error) throw error;
 
                              const u = {...user, licenceFile:null, licence:false};
@@ -268,8 +263,7 @@ export default function AccountTab({user, setCurrentUser, users, setUsers, feedb
               <button onClick={async () => {
                 if(newPwd) {
                   try {
-                    // 🚀 SAUVEGARDE DU MOT DE PASSE EN LIGNE
-                    const { error } = await supabase.from('users').update({ password: newPwd }).eq('id', user.id);
+                    const { error } = await supabase.from('users').update({ password: newPwd }).eq('email', user.email);
                     if (error) throw error;
                     
                     const u = {...user, password: newPwd};

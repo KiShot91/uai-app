@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "../supabase"; // 🔌 Notre pont Supabase
+import { supabase } from "../supabase"; 
 import { canEdit, isDev, isBurs, isCap, SPORTS, Sp, S, btnStyle } from "../config";
 import { SecTitle, AddBtn, Lbl, LocationSelect, LocationLink } from "../components/Shared";
 
@@ -48,7 +48,9 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
   const [editEv, setEditEv] = useState(null);
   const [viewEv, setViewEv] = useState(null); 
   const [weekOffset, setWeekOffset] = useState(0);
-  const [form, setForm] = useState({sportId:"pitate",date:"",time:"",dur:90,location:"",type:"training"});
+  
+  // 🆕 Ajout du paramètre "recurring" pour la case à cocher
+  const [form, setForm] = useState({sportId:"pitate",date:"",time:"",dur:90,location:"",type:"training", recurring:false});
   
   const sportDragRef = useDragScroll();
   const locDragRef = useDragScroll();
@@ -80,67 +82,63 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
   if (ultraSportItem) sportsFiltresDispos.push(ultraSportItem);
   const lieuxFiltresDispos = [...(locations||[])].sort((a,b) => String(a).localeCompare(String(b), "fr", {sensitivity:"base"}));
 
-  // 🚀 SAUVEGARDE / CRÉATION D'UN ÉVÉNEMENT VERS SUPABASE
+  // 🚀 SAUVEGARDE ET GESTION DE LA RÉPÉTITION
   const handleSaveEv = async () => {
     if (!form.date||!form.time||!form.location||!canEdit(user,form.sportId,bureau)) return;
-    const evId = editEv || Date.now();
     const durNum = +form.dur || 90;
     
-    // Format attendu par Supabase (attention aux minuscules pour sportid)
-    const dbPayload = {
-      id: evId,
-      sportid: form.sportId,
-      date: form.date,
-      time: form.time,
-      dur: durNum,
-      location: form.location,
-      type: form.type
-    };
-
     try {
       if (editEv) {
-        // Mise à jour
+        // Mise à jour classique d'un seul événement
+        const dbPayload = { sportid: form.sportId, date: form.date, time: form.time, dur: durNum, location: form.location, type: form.type };
         const { error } = await supabase.from('events').update(dbPayload).eq('id', editEv);
         if (error) throw error;
-        setEvents(p => p.map(e => e.id === editEv ? {...form, id: evId, dur: durNum} : e));
+        
+        setEvents(p => p.map(e => e.id === editEv ? {...form, id: editEv, dur: durNum} : e));
+
+        if (setMatches && (form.type === "match" || form.type === "tournament")) {
+           const matchType = form.type === "tournament" ? "Tournoi" : "Amical";
+           const existingMatch = matches.find(m => m.id === editEv || m.planningId === editEv);
+           if (existingMatch) {
+              await supabase.from('matches').update({sportid: form.sportId, date: form.date, time: form.time, location: form.location, type: matchType}).eq('id', existingMatch.id);
+              setMatches(p => p.map(m => (m.id === editEv || m.planningId === editEv) ? {...m, sportId: form.sportId, date: form.date, time: form.time, location: form.location, type: matchType} : m));
+           }
+        }
       } else {
-        // Insertion
-        const { error } = await supabase.from('events').insert([dbPayload]);
+        // 🆕 Insertion (gère la répétition sur 15 semaines)
+        const occurrences = form.recurring ? 15 : 1;
+        const eventsToInsert = [];
+        const matchesToInsert = [];
+        let currentDate = new Date(form.date);
+
+        for (let i = 0; i < occurrences; i++) {
+            const evId = Date.now() + i; // ID unique pour chaque semaine
+            const currentStr = getLocalDateStr(currentDate);
+
+            eventsToInsert.push({
+               id: evId, sportid: form.sportId, date: currentStr, time: form.time, dur: durNum, location: form.location, type: form.type
+            });
+
+            if (setMatches && (form.type === "match" || form.type === "tournament")) {
+               matchesToInsert.push({
+                   id: evId, planningid: evId, sportid: form.sportId, opponent: "À définir", date: currentStr, time: form.time, location: form.location, type: form.type==="tournament"?"Tournoi":"Amical", home: true, scorebordels: null, scoreopponent: null, likes: 0, likedby: [], comments: []
+               });
+            }
+            currentDate.setDate(currentDate.getDate() + 7); // Ajoute 7 jours
+        }
+
+        // On envoie tous les événements d'un coup à Supabase
+        const { error } = await supabase.from('events').insert(eventsToInsert);
         if (error) throw error;
-        setEvents(p => [...p, {...form, id: evId, dur: durNum}]);
-      }
+        
+        setEvents(p => [...p, ...eventsToInsert.map(e => ({...form, id: e.id, date: e.date, dur: e.dur}))]);
 
-      // Gestion synchro Matchs si c'est un match ou tournoi
-      if (setMatches && (form.type === "match" || form.type === "tournament")) {
-         const matchType = form.type === "tournament" ? "Tournoi" : "Amical";
-         const existingMatch = matches.find(m => m.id === evId || m.planningId === evId);
-
-         if (existingMatch) {
-            await supabase.from('matches').update({
-               sportid: form.sportId, date: form.date, time: form.time, location: form.location, type: matchType
-            }).eq('id', existingMatch.id);
-
-            setMatches(p => p.map(m => (m.id === evId || m.planningId === evId) ? {...m, sportId: form.sportId, date: form.date, time: form.time, location: form.location, type: matchType} : m));
-         } else {
-            const newMatchPayload = {
-               id: evId,
-               planningid: evId,
-               sportid: form.sportId,
-               opponent: "À définir",
-               date: form.date,
-               time: form.time,
-               location: form.location,
-               type: matchType,
-               home: true,
-               scorebordels: null,
-               scoreopponent: null,
-               likes: 0,
-               likedby: [],
-               comments: []
-            };
-            await supabase.from('matches').insert([newMatchPayload]);
-            setMatches(p => [...p, {id: evId, planningId: evId, sportId: form.sportId, opponent: "À définir", date: form.date, time: form.time, location: form.location, type: matchType, home: true, scoreBordels: null, scoreOpponent: null, likes:0, likedBy:[], comments:[]}]);
-         }
+        if (matchesToInsert.length > 0) {
+           await supabase.from('matches').insert(matchesToInsert);
+           setMatches(p => [...p, ...matchesToInsert.map(m => ({
+               id: m.id, planningId: m.planningid, sportId: m.sportid, opponent: m.opponent, date: m.date, time: m.time, location: m.location, type: m.type, home: m.home, scoreBordels: m.scorebordels, scoreOpponent: m.scoreopponent, likes: m.likes, likedBy: m.likedby, comments: m.comments
+           }))]);
+        }
       }
 
       setShowAdd(false); 
@@ -151,7 +149,6 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
     }
   };
 
-  // 🚀 SUPPRESSION D'UN ÉVÉNEMENT EN LIGNE
   const delEv = async (id) => { 
     if(confirm("Supprimer ce créneau ?")) {
        try {
@@ -174,7 +171,7 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
   }
 
   const handleEventClick = (ev) => { setViewEv(ev); };
-  const openEdit = (ev) => { setForm(ev); setEditEv(ev.id); setShowAdd(true); window.scrollTo(0,0); };
+  const openEdit = (ev) => { setForm({...ev, recurring: false}); setEditEv(ev.id); setShowAdd(true); window.scrollTo(0,0); };
 
   const ws = getWeekStart(weekOffset);
   const days = Array.from({length:7},(_,i)=>{ const d=new Date(ws); d.setDate(ws.getDate()+i); return d; });
@@ -229,7 +226,7 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
 
   return (
     <div className="fade-in">
-      <SecTitle title="Planning" action={canAdd && <AddBtn label="+" onClick={()=>{setForm({sportId:avSpOptions[0]?.id||"pitate",date:"",time:"",dur:90,location:"",type:"training"});setEditEv(null);setShowAdd(v=>!v);}} />} />
+      <SecTitle title="Planning" action={canAdd && <AddBtn label="+" onClick={()=>{setForm({sportId:avSpOptions[0]?.id||"pitate",date:"",time:"",dur:90,location:"",type:"training", recurring:false});setEditEv(null);setShowAdd(v=>!v);}} />} />
       
       <div style={{display:"flex", gap:10, alignItems:"center", padding:"0 20px 10px", flexWrap:"wrap"}}>
         <button onClick={()=>{setShowMatch(true);setShowTrain(true);setShowChallenge(true);}} style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${isAll?"#16a34a":"#333"}`,background:isAll?"#16a34a22":"#111",color:isAll?"#4ade80":"#666",fontSize:12,cursor:"pointer",fontWeight:isAll?700:400}}>Tous</button>
@@ -274,6 +271,15 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
           </div>
           <Lbl t="Durée (min)"/><input type="number" style={{...S.inp,marginBottom:10}} value={form.dur} onChange={e=>up("dur",e.target.value)} />
           <Lbl t="Lieu"/><LocationSelect value={form.location} onChange={v => up("location", v)} locations={locations} setLocations={setLocations} />
+          
+          {/* 🆕 La case à cocher pour répéter chaque semaine */}
+          {!editEv && (
+             <label style={{display:"flex", alignItems:"center", gap:8, fontSize:13, color:"#ccc", cursor:"pointer", margin:"14px 0"}}>
+                <input type="checkbox" checked={form.recurring} onChange={e=>up("recurring",e.target.checked)} style={{accentColor:S.red}} /> 
+                Répéter chaque semaine (sur 15 semaines)
+             </label>
+          )}
+
           <div style={{display:"flex",gap:10,marginTop:6}}>
              <button onClick={()=>{setShowAdd(false); setEditEv(null);}} style={{flex:1,...btnStyle("#1c1c1c","#888"),border:"1px solid #2a2a2a"}}>Annuler</button>
              {editEv && <button onClick={()=>{delEv(editEv);setShowAdd(false);setEditEv(null);}} style={{flex:1,...btnStyle("#1a0505","#EF4444"),border:`1px solid ${S.redBorder}`}}>Supprimer</button>}

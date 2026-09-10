@@ -35,7 +35,6 @@ function AuthScreen({users, setUsers, onLogin}) {
     else setErr("Email ou mot de passe incorrect");
   };
 
-  // NOUVELLE FONCTION REGISTER AVEC SUPABASE
   const register = async () => {
     if (!f.nom||!f.prenom||!f.email||!f.password||!f.sexe||!f.bucque||!f.phone||!f.proms) return setErr("Remplissez tous les champs obligatoires *");
     if (!isFamsExempt(f.proms) && f.fams.length===0) return setErr(`La Fam's est obligatoire (sauf pour la Bo ${maxPromo} jusqu'au 7 Nov)`);
@@ -43,7 +42,6 @@ function AuthScreen({users, setUsers, onLogin}) {
 
     const role = f.email.toLowerCase()===DEV_EMAIL ? "developer" : "user";
     
-    // On prépare le nouveau profil pour la base de données
     const nu = {
       id: Date.now(),
       email: f.email,
@@ -65,7 +63,6 @@ function AuthScreen({users, setUsers, onLogin}) {
     };
 
     try {
-      // 🚀 L'ÉCRITURE VERS SUPABASE
       const { error } = await supabase.from('users').insert([nu]);
       
       if (error) {
@@ -73,7 +70,6 @@ function AuthScreen({users, setUsers, onLogin}) {
         throw error;
       }
 
-      // Si Supabase valide, on connecte le Gadzart !
       const localNu = {...nu, bannedSports:[], adminSports:[], mutedChats:[]};
       setUsers(p => [...p, localNu]); 
       onLogin(localNu);
@@ -147,7 +143,7 @@ function AuthScreen({users, setUsers, onLogin}) {
               </div>
             )}
 
-            <div className="fade-in"><Lbl t="Email *"/><input style={S.inp} type="email" placeholder="prenom.nom@ensam.eu" value={f.email} onChange={e=>up("email",e.target.value)} onKeyDown={handleKeyDown}/></div>
+            <div className="fade-in"><Lbl t="Email *"/><input style={S.inp} type="email" placeholder="mail perso" value={f.email} onChange={e=>up("email",e.target.value)} onKeyDown={handleKeyDown}/></div>
             <div className="fade-in">
               <Lbl t="Mot de passe *"/>
               <div style={{position:"relative", display:"flex", alignItems:"center"}}>
@@ -179,7 +175,7 @@ function AuthScreen({users, setUsers, onLogin}) {
       </div>
       
       <div style={{padding:"20px 0", fontSize: 11, color: "#555", textTransform: "uppercase", letterSpacing: 1.5, textAlign: "center", lineHeight: 1.6, borderTop:"1px solid #1a1a1a", background:"#080808", marginTop:"auto"}}>
-        Since Bo {maxPromo}<br/><span style={{color:"#444", fontSize: 10}}>Usiné par Ki'Shot 91</span>
+        Since Bo 225<br/><span style={{color:"#444", fontSize: 10}}>Usiné par Ki'Shot 91</span>
       </div>
     </div>
   );
@@ -241,7 +237,6 @@ export default function UAIApp() {
   const [matches, setMatches] = useState([]);
   const [isDbLoading, setIsDbLoading] = useState(true);
 
-  // Chargement des données depuis Supabase au lancement
   useEffect(() => {
     async function fetchDatabase() {
       try {
@@ -250,7 +245,6 @@ export default function UAIApp() {
         const { data: dbMatches } = await supabase.from('matches').select('*');
 
         if (dbUsers) {
-          // On reformate les noms de colonnes (Supabase met tout en minuscule par défaut)
           const formattedUsers = dbUsers.map(u => ({
             ...u,
             bannedSports: u.bannedsports || [],
@@ -261,7 +255,6 @@ export default function UAIApp() {
           }));
           setUsers(formattedUsers);
 
-          // Auto-connexion si on était déjà connecté
           const savedId = localStorage.getItem("uai_user");
           if (savedId) {
             const found = formattedUsers.find(user => String(user.id) === savedId);
@@ -316,7 +309,6 @@ export default function UAIApp() {
   const [tab, setTab] = useState("planning"); const [slideDir, setSlideDir] = useState("fade-in");
   const [viewProfileId, setViewProfileId] = useState(null); 
   
-  // Ces données restent en local pour l'instant avant qu'on crée leurs tableaux Supabase
   const [news, setNews] = useState(NW0); 
   const [bureau, setBureau] = useState(BUR0); const [locations, setLocations] = useState(LOCS0);
   const [partners, setPartners] = useState([{id:1, name:"Boulangerie Le Fournil", msg:"Merci pour les viennoiseries lors des tournois !", offer:"-10% sur présentation de la licence UAI"}]);
@@ -390,7 +382,6 @@ export default function UAIApp() {
     });
   }
 
-  // Écran de chargement pendant que Supabase répond
   if (isDbLoading) return (
     <div style={{minHeight:"100dvh",background:S.bg,display:"flex",alignItems:"center",justifyContent:"center",color:S.red,fontFamily:"'Barlow Condensed'",fontSize:32,fontWeight:900,letterSpacing:2}}>
       CHARGEMENT...
@@ -412,6 +403,10 @@ export default function UAIApp() {
           {tab==="groupes"&&<GroupesTab groups={groups} setGroups={setGroups} users={users} setUsers={setUsers} user={user} chat={chat} setChat={setChat} teams={teams} setTeams={setTeams} challenges={challenges} setChallenges={setChallenges} bureau={bureau} events={events} setEvents={setEvents}/>}
           {tab==="admin"&&<AdminTab users={users} setUsers={setUsers} bureau={bureau} setBureau={setBureau} feedbacks={feedbacks} setFeedbacks={setFeedbacks} />}
           {tab==="account"&&<AccountTab user={user} setCurrentUser={setCur} users={users} setUsers={setUsers} feedbacks={feedbacks} setFeedbacks={setFeedbacks} />}
+          
+          <div style={{padding:"20px 0 40px", fontSize: 11, color: "#555", textTransform: "uppercase", letterSpacing: 1.5, textAlign: "center", lineHeight: 1.6}}>
+            Since Bo 225<br/><span style={{color:"#444", fontSize: 10}}>Usiné par Ki'Shot 91</span>
+          </div>
         </div>
         <BottomNav active={tab} onChange={changeTab} user={user} />
       </div>

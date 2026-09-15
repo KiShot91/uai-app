@@ -1,8 +1,46 @@
 import { useState, useRef } from "react";
-import { isDev, isBurs, readFile, dn, fmtDate, handleLike, S, btnStyle, SPORTS, Sp } from "../config";
-import { SecTitle, AddBtn, Card, Tag, Comments, Lbl, Av } from "../components/Shared";
+import { supabase } from "../supabase";
+import { isDev, isBurs, readFile, dn, fmtDate, S, btnStyle, SPORTS, Sp } from "../config";
+import { SecTitle, AddBtn, Card, Tag, Lbl, Av } from "../components/Shared";
 
-function NewsDetail({n, user, setNews, onClose, bureau}) {
+// 💬 Composant local de commentaires pour les News (lié à Supabase)
+function NewsComments({ item, setNews, user }) {
+  const [txt, setTxt] = useState("");
+  const comments = item.comments || [];
+
+  const add = async () => {
+    if(!txt.trim()) return;
+    const nc = { id: Date.now(), userId: user.id, userName: dn(user), text: txt, time: new Date().toISOString() };
+    const newComments = [...comments, nc];
+    try {
+       const {error} = await supabase.from('news').update({comments: newComments}).eq('id', item.id);
+       if (error) throw error;
+       setNews(p => p.map(n => n.id === item.id ? {...n, comments: newComments} : n));
+       setTxt("");
+    } catch(e) { console.error(e); alert("Erreur lors de l'envoi."); }
+  };
+
+  return (
+    <div style={{borderTop:"1px solid #1a1a1a",padding:"14px 0 0", marginTop:20}}>
+      <div style={{fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>COMMENTAIRES - {comments.length}</div>
+      {comments.map(c => (
+        <div key={c.id} style={{marginBottom:12,display:"flex",gap:10}}>
+          <Av name={c.userName} size={30} color={S.red} />
+          <div style={{flex:1}}>
+            <div style={{display:"flex",gap:8,marginBottom:3,alignItems:"center"}}><span style={{fontSize:12,fontWeight:700}}>{c.userName}</span><span style={{fontSize:10,color:"#333"}}>{new Date(c.time).toLocaleDateString("fr-FR",{day:"numeric",month:"short"})}</span></div>
+            <div style={{fontSize:13,color:"#aaa",lineHeight:1.6,marginBottom:6}}>{c.text}</div>
+          </div>
+        </div>
+      ))}
+      <div style={{display:"flex",gap:8,marginTop:10}}>
+        <input style={{...S.inp,flex:1,padding:"9px 12px",fontSize:13}} placeholder="Commenter..." value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} />
+        <button onClick={add} style={{background:S.red, color:"white", border:"none", borderRadius:10, padding:"9px 14px", cursor:"pointer", fontSize:13, fontWeight:700, flexShrink:0}}>Envoyer</button>
+      </div>
+    </div>
+  );
+}
+
+function NewsDetail({n, user, setNews, onClose, bureau, toggleLike, delN}) {
   const liked = Array.isArray(n.likedBy) && n.likedBy.includes(user.id);
   const sp = Sp[n.sportId] || {l: n.sportId};
   const photos = n.photos||[];
@@ -12,7 +50,7 @@ function NewsDetail({n, user, setNews, onClose, bureau}) {
     <div className="fade-in" style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:S.bg,zIndex:200,overflowY:"auto",paddingBottom:80}}>
       <div style={{padding:"14px 18px",background:"#0c0c0c",borderBottom:"1px solid #1a1a1a",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
         <button onClick={onClose} style={{background:"none",border:"none",color:S.red,cursor:"pointer",fontSize:16,fontWeight:800,fontFamily:"inherit",padding:"4px 8px"}}>← Retour</button>
-        {(isDev(user) || isBurs(user, bureau)) && <button onClick={()=>{if(confirm("Supprimer l'actu ?")){setNews(p=>p.filter(x=>x.id!==n.id));onClose();}}} style={{background:"none",border:"none",color:"#EF4444",fontSize:16,cursor:"pointer"}}>🗑️</button>}
+        {(isDev(user) || isBurs(user, bureau)) && <button onClick={()=>delN(n.id)} style={{background:"none",border:"none",color:"#EF4444",fontSize:16,cursor:"pointer"}}>🗑️</button>}
       </div>
       
       {photos.length>0 && (
@@ -38,13 +76,13 @@ function NewsDetail({n, user, setNews, onClose, bureau}) {
         <div style={{fontFamily:"'Barlow Condensed'",fontSize:32,fontWeight:900,lineHeight:1.1,marginBottom:14}}>{n.title}</div>
         <div style={{fontSize:15,color:"#ccc",lineHeight:1.8,marginBottom:20,whiteSpace:"pre-wrap"}}>{n.content}</div>
         
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0",borderTop:"1px solid #1e1e1e",borderBottom:"1px solid #1e1e1e",marginBottom:20}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0",borderTop:"1px solid #1e1e1e",borderBottom:"1px solid #1e1e1e"}}>
           <span style={{fontSize:12,color:"#555"}}>Par {n.authorName}</span>
-          <button onClick={() => handleLike(n.id, setNews, user)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:liked?S.red:"#555", display:"flex", alignItems:"center", gap:6}}>
+          <button onClick={() => toggleLike(n)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:liked?S.red:"#555", display:"flex", alignItems:"center", gap:6}}>
             {liked?"❤️":"🤍"} <span style={{fontWeight:700,fontSize:14}}>{n.likes||0}</span>
           </button>
         </div>
-        <Comments itemId={n.id} comments={n.comments} setList={setNews} user={user} />
+        <NewsComments item={n} setNews={setNews} user={user} />
       </div>
     </div>
   );
@@ -64,22 +102,71 @@ export default function NewsTab({news, setNews, user, bureau}) {
     let done=0, results=[];
     for (let i=0;i<total;i++) readFile(files[i], d => { results.push(d); if(++done===total) setForm(p=>({...p,photos:[...p.photos,...results]})); });
   };
-  const handleSaveN = () => {
-    if (!form.title||!form.content||!canAdd) return;
-    if (editNId) {
-      setNews(p => p.map(n => n.id===editNId ? {...n,...form} : n));
-    } else {
-      setNews(p => [{...form,id:Date.now(),date:new Date().toISOString().slice(0,10),authorId:user.id,authorName:dn(user),likes:0,likedBy:[],comments:[]},...p]);
-    }
-    setShowAdd(false); setEditNId(null);
+
+  // ❤️ GESTION DES LIKES (Supabase)
+  const toggleLike = async (n) => {
+    const isL = (n.likedBy || []).includes(user.id);
+    const newLikedBy = isL ? (n.likedBy||[]).filter(x=>x!==user.id) : [...(n.likedBy||[]), user.id];
+    const newLikes = newLikedBy.length;
+    try {
+      const { error } = await supabase.from('news').update({ likes: newLikes, likedby: newLikedBy }).eq('id', n.id);
+      if (error) throw error;
+      setNews(p => p.map(x => x.id === n.id ? {...x, likes: newLikes, likedBy: newLikedBy} : x));
+    } catch (err) { console.error(err); }
   };
-  const delN = (id) => { if(confirm("Supprimer l'actu ?")) setNews(p=>p.filter(x=>x.id!==id)); setShowAdd(false); setEditNId(null); };
+
+  // 📝 SAUVEGARDE & MODIFICATION (Supabase)
+  const handleSaveN = async () => {
+    if (!form.title||!form.content||!canAdd) return;
+    const isEdit = !!editNId;
+    const nId = editNId || Date.now();
+    const today = new Date().toISOString().slice(0,10);
+
+    const dbPayload = { sportid: form.sportId, title: form.title, content: form.content, photos: form.photos };
+
+    try {
+      if (isEdit) {
+        const { error } = await supabase.from('news').update(dbPayload).eq('id', nId);
+        if (error) throw error;
+        setNews(p => p.map(n => n.id===nId ? {...n,...form} : n));
+      } else {
+        dbPayload.id = nId;
+        dbPayload.date = today;
+        dbPayload.authorid = user.id;
+        dbPayload.authorname = dn(user);
+        dbPayload.likes = 0;
+        dbPayload.likedby = [];
+        dbPayload.comments = [];
+
+        const { error } = await supabase.from('news').insert([dbPayload]);
+        if (error) throw error;
+
+        setNews(p => [{...form, id:nId, date:today, authorId:user.id, authorName:dn(user), likes:0, likedBy:[], comments:[]}, ...p]);
+      }
+      setShowAdd(false); setEditNId(null);
+    } catch(e) { console.error(e); alert("Erreur lors de la sauvegarde."); }
+  };
+
+  // 🗑️ SUPPRESSION (Supabase)
+  const delN = async (id) => { 
+    if(confirm("Supprimer l'actu ?")) {
+      try {
+        const { error } = await supabase.from('news').delete().eq('id', id);
+        if (error) throw error;
+        setNews(p=>p.filter(x=>x.id!==id)); 
+        setShowAdd(false); setEditNId(null); setSelected(null);
+      } catch(e) { console.error(e); alert("Erreur lors de la suppression."); }
+    }
+  };
 
   if (selected) {
     const n = news.find(x=>x.id===selected);
-    if(n) return <NewsDetail n={n} user={user} setNews={setNews} onClose={()=>setSelected(null)} bureau={bureau} />;
+    if(n) return <NewsDetail n={n} user={user} setNews={setNews} onClose={()=>setSelected(null)} bureau={bureau} toggleLike={toggleLike} delN={delN} />;
     else setSelected(null);
   }
+
+  // Tri des actus du plus récent au plus ancien
+  const sortedNews = [...news].sort((a,b) => new Date(b.date) - new Date(a.date));
 
   return (
     <div className="fade-in">
@@ -114,7 +201,8 @@ export default function NewsTab({news, setNews, user, bureau}) {
       )}
       
       <div style={{display:"flex", flexDirection:"column", gap:16, maxWidth:800, margin:"0 auto", padding:"0 20px"}}>
-        {news.map(n => {
+        {sortedNews.length === 0 && <div style={{textAlign:"center", color:"#555", fontSize:12, padding:"20px"}}>Aucune actualité pour le moment.</div>}
+        {sortedNews.map(n => {
           const liked = Array.isArray(n.likedBy) && n.likedBy.includes(user.id);
           const sp = Sp[n.sportId] || {l: n.sportId};
           const hasPh = (n.photos||[]).length > 0;
@@ -136,7 +224,7 @@ export default function NewsTab({news, setNews, user, bureau}) {
                      <span style={{fontSize:12,color:"#555"}}>Par {n.authorName}</span>
                      <span style={{fontSize:12,color:"#555"}}>{"💬 "+(n.comments?.length||0)}</span>
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); handleLike(n.id, setNews, user); }} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:liked?S.red:"#555", display:"flex", alignItems:"center", gap:6}}>
+                  <button onClick={(e) => { e.stopPropagation(); toggleLike(n); }} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:liked?S.red:"#555", display:"flex", alignItems:"center", gap:6}}>
                     {liked?"❤️":"🤍"} <span style={{fontWeight:700,fontSize:14}}>{n.likes||0}</span>
                   </button>
                 </div>

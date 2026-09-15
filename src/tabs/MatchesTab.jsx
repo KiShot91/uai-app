@@ -1,8 +1,46 @@
 import { useState, useEffect, useRef } from "react";
-import { dL, Sp, canEdit, S, MTYPES, fmtDate, handleLike, btnStyle, SPORTS, isDev, isBurs, isCap } from "../config";
-import { Card, SecTitle, AddBtn, Lbl, LocationSelect, Tag, LocationLink, Comments } from "../components/Shared";
+import { supabase } from "../supabase";
+import { dL, Sp, canEdit, S, MTYPES, fmtDate, btnStyle, SPORTS, isDev, isBurs, isCap, dn } from "../config";
+import { Card, SecTitle, AddBtn, Lbl, LocationSelect, Tag, LocationLink, Av } from "../components/Shared";
 
 const MTC = {Championnat:"#DC2626",Finale:"#F59E0B",Coupe:"#8B5CF6",Amical:"#3B82F6",Tournoi:"#10B981"};
+
+// 💬 Composant local de commentaires lié à Supabase
+function MatchComments({ match, setMatches, user }) {
+  const [txt, setTxt] = useState("");
+  const comments = match.comments || [];
+  
+  const add = async () => { 
+    if(!txt.trim()) return;
+    const nc = { id: Date.now(), userId: user.id, userName: dn(user), text: txt, time: new Date().toISOString() };
+    const newComments = [...comments, nc];
+    try {
+       const {error} = await supabase.from('matches').update({comments: newComments}).eq('id', match.id);
+       if (error) throw error;
+       setMatches(p => p.map(m => m.id === match.id ? {...m, comments: newComments} : m));
+       setTxt("");
+    } catch(e) { console.error(e); alert("Erreur lors de l'envoi."); }
+  };
+
+  return (
+    <div style={{borderTop:"1px solid #1a1a1a",padding:"14px 16px", background:"#0c0c0c"}}>
+      <div style={{fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>COMMENTAIRES - {comments.length}</div>
+      {comments.map(c => (
+        <div key={c.id} style={{marginBottom:12,display:"flex",gap:10}}>
+          <Av name={c.userName} size={30} color={S.red} />
+          <div style={{flex:1}}>
+            <div style={{display:"flex",gap:8,marginBottom:3,alignItems:"center"}}><span style={{fontSize:12,fontWeight:700}}>{c.userName}</span><span style={{fontSize:10,color:"#333"}}>{new Date(c.time).toLocaleDateString("fr-FR",{day:"numeric",month:"short"})}</span></div>
+            <div style={{fontSize:13,color:"#aaa",lineHeight:1.6,marginBottom:6}}>{c.text}</div>
+          </div>
+        </div>
+      ))}
+      <div style={{display:"flex",gap:8,marginTop:10}}>
+        <input style={{...S.inp,flex:1,padding:"9px 12px",fontSize:13}} placeholder="Commenter..." value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} />
+        <button onClick={add} style={{background:S.red, color:"white", border:"none", borderRadius:10, padding:"9px 14px", cursor:"pointer", fontSize:13, fontWeight:700, flexShrink:0}}>Envoyer</button>
+      </div>
+    </div>
+  );
+}
 
 export default function MatchesTab({matches, setMatches, events, setEvents, user, locations, setLocations, bureau}) {
   const [showAdd, setShowAdd] = useState(false);
@@ -27,44 +65,113 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
     }
   }, []);
 
-  // 🎯 SYNCHRONISATION PLANNING -> Le Match se crée aussi dans le planning
-  const handleSaveM = () => {
+  // 🎯 SYNCHRONISATION MATCH -> SUPABASE & PLANNING
+  const handleSaveM = async () => {
     if (!form.opponent||!form.date||!form.time||!form.location||!canEdit(user,form.sportId,bureau)) return;
     const sB = form.scoreBordels === "" ? null : Number(form.scoreBordels);
     const sO = form.scoreOpponent === "" ? null : Number(form.scoreOpponent);
     const mId = editMId || Date.now();
     
-    const newM = {...form, scoreBordels:sB, scoreOpponent:sO, id:mId};
+    const typeStr = form.type === "Tournoi" ? "tournament" : "match";
+    const titleStr = form.type === "Tournoi" ? `Tournoi ${form.opponent}` : `Match vs ${form.opponent}`;
 
-    if (editMId) {
-       setMatches(p => p.map(m => m.id===editMId ? {...m, ...newM} : m));
-    } else {
-       setMatches(p=>[...p, {...newM, likes:0, likedBy:[], comments:[]}]);
+    const dbMatchPayload = {
+       sportid: form.sportId,
+       opponent: form.opponent,
+       date: form.date,
+       time: form.time,
+       location: form.location,
+       type: form.type,
+       home: form.home,
+       scorebordels: sB,
+       scoreopponent: sO
+    };
+
+    const dbEventPayload = {
+       sportid: form.sportId,
+       date: form.date,
+       time: form.time,
+       dur: 90,
+       location: form.location,
+       type: typeStr,
+       title: titleStr
+    };
+
+    try {
+      if (editMId) {
+         const currentMatch = matches.find(x => x.id === editMId);
+         const eventIdToUpdate = currentMatch?.planningId || editMId;
+
+         // MAJ Match
+         const { error: errM } = await supabase.from('matches').update(dbMatchPayload).eq('id', editMId);
+         if (errM) throw errM;
+         
+         // MAJ Planning (Si l'événement existe)
+         await supabase.from('events').update(dbEventPayload).eq('id', eventIdToUpdate);
+         
+         setMatches(p => p.map(m => m.id === editMId ? {...m, ...form, scoreBordels: sB, scoreOpponent: sO} : m));
+         if (setEvents) {
+            setEvents(p => p.map(e => e.id === eventIdToUpdate ? {...e, ...dbEventPayload} : e));
+         }
+      } else {
+         dbMatchPayload.id = mId;
+         dbMatchPayload.planningid = mId;
+         dbMatchPayload.likes = 0;
+         dbMatchPayload.likedby = [];
+         dbMatchPayload.comments = [];
+         
+         // Ajout Match
+         const { error: errM } = await supabase.from('matches').insert([dbMatchPayload]);
+         if (errM) throw errM;
+         
+         // Ajout Planning
+         dbEventPayload.id = mId;
+         await supabase.from('events').insert([dbEventPayload]);
+
+         setMatches(p => [...p, {id: mId, ...form, planningId: mId, scoreBordels: sB, scoreOpponent: sO, likes: 0, likedBy: [], comments: []}]);
+         if (setEvents) {
+            setEvents(p => [...p, {id: mId, matchId: mId, ...dbEventPayload}]);
+         }
+      }
+      setShowAdd(false); setEditMId(null);
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de l'enregistrement du match.");
     }
-
-    if (setEvents) {
-       setEvents(p => {
-          const exists = p.find(e => e.id === mId || e.matchId === mId);
-          const title = form.type === "Tournoi" ? `Tournoi ${form.opponent}` : `Match vs ${form.opponent}`;
-          const type = form.type === "Tournoi" ? "tournament" : "match";
-          if (exists) {
-             return p.map(e => (e.id === mId || e.matchId === mId) ? {...e, sportId: form.sportId, date: form.date, time: form.time, location: form.location, type, title} : e);
-          } else {
-             return [...p, {id: mId, matchId: mId, sportId: form.sportId, date: form.date, time: form.time, dur: 90, location: form.location, type, title}];
-          }
-       });
-    }
-
-    setShowAdd(false); setEditMId(null);
   };
 
   const openEdit = (m) => { setForm({...m, scoreBordels:m.scoreBordels??"", scoreOpponent:m.scoreOpponent??""}); setEditMId(m.id); setShowAdd(true); window.scrollTo(0,0); };
   
-  const delM = (id) => { 
+  const delM = async (id) => { 
     if(confirm("Supprimer ce match ?")) {
-       setMatches(p=>p.filter(m=>m.id!==id)); 
-       if(setEvents) setEvents(p=>p.filter(e=>e.id!==id && e.matchId!==id));
+       try {
+          const currentMatch = matches.find(x => x.id === id);
+          const eventIdToDelete = currentMatch?.planningId || id;
+
+          const { error } = await supabase.from('matches').delete().eq('id', id);
+          if (error) throw error;
+
+          await supabase.from('events').delete().eq('id', eventIdToDelete);
+
+          setMatches(p=>p.filter(m=>m.id!==id)); 
+          if(setEvents) setEvents(p=>p.filter(e=>e.id!==eventIdToDelete));
+       } catch (err) {
+          console.error(err);
+          alert("Erreur lors de la suppression.");
+       }
     }
+  };
+
+  // ❤️ GESTION DES LIKES SUR SUPABASE
+  const toggleLike = async (m) => {
+    const isL = (m.likedBy || []).includes(user.id);
+    const newLikedBy = isL ? (m.likedBy||[]).filter(x=>x!==user.id) : [...(m.likedBy||[]), user.id];
+    const newLikes = newLikedBy.length;
+    try {
+      const { error } = await supabase.from('matches').update({ likes: newLikes, likedby: newLikedBy }).eq('id', m.id);
+      if (error) throw error;
+      setMatches(p => p.map(x => x.id === m.id ? {...x, likes: newLikes, likedBy: newLikedBy} : x));
+    } catch (err) { console.error(err); }
   };
 
   const avSpOptions = (isDev(user) || isBurs(user, bureau)) 
@@ -130,15 +237,15 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
             <div style={{display:"flex",gap:5,marginBottom:12,justifyContent:"center"}}><Tag label={m.type} color={tc}/></div>
             <div style={{fontSize:12,color:"#888",display:"flex",flexDirection:"column",gap:4,textAlign:"center"}}>
               <span>{fmtDate(m.date)} - {m.time} - {m.home?"Domicile":"Extérieur"}</span>
-              <span style={{color:"#4B9FFF",fontSize:12}}>📍 <LocationLink location={m.location} /></span>
+              <span style={{color:"#4B9FFF",fontSize:12}}>📍 <LocationLink location={m.location} locations={locations} /></span>
             </div>
             <div style={{display:"flex", justifyContent:"flex-end", marginTop:14, paddingTop:14, borderTop:"1px solid #1a1a1a"}}>
-              <button onClick={() => handleLike(m.id, setMatches, user)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:liked?S.red:"#555", display:"flex", alignItems:"center", gap:6}}>
+              <button onClick={() => toggleLike(m)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:liked?S.red:"#555", display:"flex", alignItems:"center", gap:6}}>
                 {liked?"❤️":"🤍"} <span style={{fontWeight:700,fontSize:14}}>{m.likes||0}</span>
               </button>
             </div>
           </div>
-          <Comments itemId={m.id} comments={m.comments} setList={setMatches} user={user} />
+          <MatchComments match={m} setMatches={setMatches} user={user} />
         </Card>
       </div>
     );
@@ -157,7 +264,7 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
             <div><Lbl t="Date"/><input type="date" style={S.inp} value={form.date} onChange={e=>up("date",e.target.value)}/></div>
             <div><Lbl t="Heure"/><input type="time" style={S.inp} value={form.time} onChange={e=>up("time",e.target.value)}/></div>
           </div>
-          <Lbl t="Lieu"/><LocationSelect value={form.location} onChange={v => up("location", v)} locations={locations} setLocations={setLocations} />
+          <Lbl t="Lieu"/><LocationSelect value={form.location} onChange={v => up("location", v)} locations={locations} />
           <Lbl t="Type"/><select style={{...S.inp,marginBottom:12}} value={form.type} onChange={e=>up("type",e.target.value)}>{MTYPES.map(t=><option key={t} value={t}>{t}</option>)}</select>
           <div style={{display:"flex",gap:8,marginBottom:14}}>{["Domicile","Extérieur"].map((l,i)=>{const on=(i===0&&form.home)||(i===1&&!form.home);return(<button key={l} onClick={()=>up("home",i===0)} style={{flex:1,padding:"9px 0",borderRadius:9,border:"1px solid",fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:600,borderColor:on?S.red:"#2a2a2a",background:on?S.redFaint:"transparent",color:on?S.red:"#555"}}>{l}</button>);})}</div>
           

@@ -49,7 +49,6 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
   const [viewEv, setViewEv] = useState(null); 
   const [weekOffset, setWeekOffset] = useState(0);
   
-  // 🆕 Ajout du paramètre "recurring" pour la case à cocher
   const [form, setForm] = useState({sportId:"pitate",date:"",time:"",dur:90,location:"",type:"training", recurring:false});
   
   const sportDragRef = useDragScroll();
@@ -80,16 +79,14 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
   const sportsFiltresDispos = SPORTS.filter(s => s.id !== "general" && s.id !== "ultra" && s.id !== "tuverras");
   const ultraSportItem = SPORTS.find(s => s.id === "ultra");
   if (ultraSportItem) sportsFiltresDispos.push(ultraSportItem);
-  const lieuxFiltresDispos = [...(locations||[])].sort((a,b) => String(a).localeCompare(String(b), "fr", {sensitivity:"base"}));
+  const lieuxFiltresDispos = [...(locations||[])].map(l => typeof l === 'string' ? l : l.name).sort((a,b) => String(a).localeCompare(String(b), "fr", {sensitivity:"base"}));
 
-  // 🚀 SAUVEGARDE ET GESTION DE LA RÉPÉTITION
   const handleSaveEv = async () => {
     if (!form.date||!form.time||!form.location||!canEdit(user,form.sportId,bureau)) return;
     const durNum = +form.dur || 90;
     
     try {
       if (editEv) {
-        // Mise à jour classique d'un seul événement
         const dbPayload = { sportid: form.sportId, date: form.date, time: form.time, dur: durNum, location: form.location, type: form.type };
         const { error } = await supabase.from('events').update(dbPayload).eq('id', editEv);
         if (error) throw error;
@@ -105,14 +102,22 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
            }
         }
       } else {
-        // 🆕 Insertion (gère la répétition sur 15 semaines)
-        const occurrences = form.recurring ? 15 : 1;
         const eventsToInsert = [];
         const matchesToInsert = [];
         let currentDate = new Date(form.date);
+        
+        // 🎯 LOGIQUE SAISON : On répète jusqu'au 1er juillet de l'année scolaire en cours
+        let limitDate = new Date(currentDate);
+        if (form.recurring) {
+           // Si le mois de l'événement est >= Juillet (mois 6), le "1er juillet" sera l'année suivante.
+           const targetYear = currentDate.getMonth() >= 6 ? currentDate.getFullYear() + 1 : currentDate.getFullYear();
+           limitDate = new Date(targetYear, 6, 1); 
+        }
 
-        for (let i = 0; i < occurrences; i++) {
-            const evId = Date.now() + i; // ID unique pour chaque semaine
+        let i = 0;
+        // Tant que la date générée ne dépasse pas le 1er juillet cible
+        while (currentDate <= limitDate) {
+            const evId = Date.now() + i; 
             const currentStr = getLocalDateStr(currentDate);
 
             eventsToInsert.push({
@@ -124,10 +129,10 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
                    id: evId, planningid: evId, sportid: form.sportId, opponent: "À définir", date: currentStr, time: form.time, location: form.location, type: form.type==="tournament"?"Tournoi":"Amical", home: true, scorebordels: null, scoreopponent: null, likes: 0, likedby: [], comments: []
                });
             }
-            currentDate.setDate(currentDate.getDate() + 7); // Ajoute 7 jours
+            currentDate.setDate(currentDate.getDate() + 7); 
+            i++;
         }
 
-        // On envoie tous les événements d'un coup à Supabase
         const { error } = await supabase.from('events').insert(eventsToInsert);
         if (error) throw error;
         
@@ -272,11 +277,10 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
           <Lbl t="Durée (min)"/><input type="number" style={{...S.inp,marginBottom:10}} value={form.dur} onChange={e=>up("dur",e.target.value)} />
           <Lbl t="Lieu"/><LocationSelect value={form.location} onChange={v => up("location", v)} locations={locations} setLocations={setLocations} />
           
-          {/* 🆕 La case à cocher pour répéter chaque semaine */}
           {!editEv && (
              <label style={{display:"flex", alignItems:"center", gap:8, fontSize:13, color:"#ccc", cursor:"pointer", margin:"14px 0"}}>
                 <input type="checkbox" checked={form.recurring} onChange={e=>up("recurring",e.target.checked)} style={{accentColor:S.red}} /> 
-                Répéter chaque semaine (sur 15 semaines)
+                Répéter chaque semaine (jusqu'au 1er juillet)
              </label>
           )}
 
@@ -298,7 +302,7 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
                  <div style={{display:"flex", alignItems:"center", gap:8, fontSize:15, color:"#ccc"}}>📅 {fmtDateLocal(viewEv.date)}</div>
                  <div style={{display:"flex", alignItems:"center", gap:8, fontSize:15, color:"#ccc"}}>⏰ {viewEv.time} - {endTimeStrLocal(viewEv.time, viewEv.dur)} <span style={{fontSize:12,color:"#666"}}>({viewEv.dur} min)</span></div>
                  <div style={{display:"flex", alignItems:"center", gap:8, fontSize:15, color:"#4B9FFF"}}>
-                    📍 <LocationLink location={viewEv.location} />
+                    📍 <LocationLink location={viewEv.location} locations={locations} />
                  </div>
               </div>
               {canEdit(user, viewEv.sportId, bureau) && (

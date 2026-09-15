@@ -1,9 +1,9 @@
 import { useState } from "react";
+import { supabase } from "../supabase";
 import { isDev, isBurs, isCap, dn, canEdit, SPORTS, ROLES, BURS_ROLE_IDS, SANTE_DATA, S, btnStyle } from "../config";
 import { SecTitle, Card, Lbl, RenderTitles, Av, Tag } from "../components/Shared";
 
 export default function InfoTab({bureau, users, user, partners, setPartners, muscuList, setMuscuList, inventory, setInventory, onViewProfile}) {
-  // 🛡️ CORRECTION : On initialise à null pour ne rien ouvrir par défaut
   const [open,setOpen]=useState(null); 
   
   const [mod,setMod]=useState(null);
@@ -15,28 +15,77 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
   const canEditMuscu = isDev(user) || inBurs || isCap(user, "muscu");
   const canEditPartners = isDev(user) || inBurs;
   
-  const addPartner = () => { 
+  // 🤝 GESTION DES PARTENAIRES (Supabase)
+  const addPartner = async () => { 
     if (!formP.name) return; 
-    setPartners(p => [...p, {...formP, id:Date.now()}]); 
-    setShowAddP(false); 
-    setFormP({name:"", msg:"", offer:""}); 
-  }
+    const newItem = { id: Date.now(), name: formP.name, msg: formP.msg, offer: formP.offer };
+    try {
+       const { error } = await supabase.from('partners').insert([newItem]);
+       if (error) throw error;
+       setPartners(p => [...p, newItem]); 
+       setShowAddP(false); 
+       setFormP({name:"", msg:"", offer:""}); 
+    } catch(e) { console.error(e); alert("Erreur d'ajout"); }
+  };
+
+  const delPartner = async (id) => {
+    if(confirm("Supprimer ce partenaire ?")) {
+       try {
+          const { error } = await supabase.from('partners').delete().eq('id', id);
+          if (error) throw error;
+          setPartners(arr => arr.filter(x => x.id !== id));
+       } catch(e) { console.error(e); alert("Erreur de suppression"); }
+    }
+  };
   
   const captains = users.filter(u => (u.adminSports||[]).length > 0 && !isDev(u));
   
+  // 💪 GESTION MUSCULATION (Supabase)
   const [formM, setFormM] = useState({cat:"Machines", name:"", desc:""});
-  const addMuscu = () => { 
+  const addMuscu = async () => { 
     if(!formM.name) return; 
-    setMuscuList(p=>[...p,{...formM, id:Date.now()}]); 
-    setFormM({cat:"Machines", name:"", desc:""}); 
-  }
+    const newItem = { id: Date.now(), cat: formM.cat, name: formM.name, desc: formM.desc };
+    try {
+       const { error } = await supabase.from('musculation').insert([newItem]);
+       if (error) throw error;
+       setMuscuList(p => [...p, newItem]); 
+       setFormM({cat:"Machines", name:"", desc:""}); 
+    } catch(e) { console.error(e); alert("Erreur d'ajout"); }
+  };
+
+  const delMuscu = async (id) => {
+    if(confirm("Supprimer cet exercice ?")) {
+       try {
+          const { error } = await supabase.from('musculation').delete().eq('id', id);
+          if (error) throw error;
+          setMuscuList(arr => arr.filter(x => x.id !== id));
+       } catch(e) { console.error(e); alert("Erreur de suppression"); }
+    }
+  };
   
+  // 📦 GESTION INVENTAIRE (Supabase)
   const [formI, setFormI] = useState({sportId:"pitate", name:"", qty:1, desc:""});
-  const addInv = () => { 
+  const addInv = async () => { 
     if(!formI.name) return; 
-    setInventory(p=>[...p,{...formI, qty:Number(formI.qty)||1, id:Date.now()}]); 
-    setFormI(p=>({...p, name:"", qty:1, desc:""})); 
-  }
+    const qtyNum = Number(formI.qty) || 1;
+    const newItem = { id: Date.now(), sportid: formI.sportId, name: formI.name, qty: qtyNum, desc: formI.desc };
+    try {
+       const { error } = await supabase.from('inventory').insert([newItem]);
+       if (error) throw error;
+       setInventory(p => [...p, { ...newItem, sportId: formI.sportId }]); 
+       setFormI(p => ({...p, name:"", qty:1, desc:""})); 
+    } catch(e) { console.error(e); alert("Erreur d'ajout"); }
+  };
+
+  const delInv = async (id) => {
+    if(confirm("Supprimer ce matériel ?")) {
+       try {
+          const { error } = await supabase.from('inventory').delete().eq('id', id);
+          if (error) throw error;
+          setInventory(arr => arr.filter(x => x.id !== id));
+       } catch(e) { console.error(e); alert("Erreur de suppression"); }
+    }
+  };
 
   // Sécurisation de la recherche 
   const annuaireList = searchM 
@@ -158,7 +207,7 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 {partners.map(p=>(
                   <div key={p.id} style={{background:"#141414", padding:12, borderRadius:8, border:"1px solid #222", position:"relative"}}>
-                    {canEditPartners && <button onClick={()=>{if(confirm("Supprimer ?")) setPartners(arr=>arr.filter(x=>x.id!==p.id));}} style={{position:"absolute",top:8,right:8,background:"none",border:"none",color:"#EF4444",cursor:"pointer"}}>🗑️</button>}
+                    {canEditPartners && <button onClick={()=>delPartner(p.id)} style={{position:"absolute",top:8,right:8,background:"none",border:"none",color:"#EF4444",cursor:"pointer"}}>🗑️</button>}
                     <div style={{fontSize:15,fontWeight:700,marginBottom:4,color:S.red}}>{p.name}</div>
                     {p.msg && <div style={{fontSize:12,color:"#999",marginBottom:6,fontStyle:"italic"}}>"{p.msg}"</div>}
                     {p.offer && <div style={{fontSize:11,background:"#10B98122",color:"#10B981",padding:"4px 8px",borderRadius:4,display:"inline-block"}}>🎁 {p.offer}</div>}
@@ -213,7 +262,7 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
                        {items.map(m => (
                          <div key={m.id} style={{background:"#1c1c1c",border:"1px solid #232323",borderRadius:10,padding:"10px 13px", position:"relative"}}>
-                           {canEditMuscu && <button onClick={()=>{if(confirm("Supprimer ?")) setMuscuList(arr=>arr.filter(x=>x.id!==m.id));}} style={{position:"absolute",top:6,right:6,background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:12}}>🗑️</button>}
+                           {canEditMuscu && <button onClick={()=>delMuscu(m.id)} style={{position:"absolute",top:6,right:6,background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:12}}>🗑️</button>}
                            <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>{m.name}</div>
                            <div style={{fontSize:12,color:"#999",lineHeight:1.6}}>{m.desc}</div>
                          </div>
@@ -264,7 +313,7 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
                               <div style={{fontSize:13,fontWeight:700}}>{m.qty}x {m.name}</div>
                               {m.desc && <div style={{fontSize:11,color:"#888"}}>{m.desc}</div>}
                            </div>
-                           {canEditInv && <button onClick={()=>{if(confirm("Supprimer ?")) setInventory(arr=>arr.filter(x=>x.id!==m.id));}} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:12}}>🗑️</button>}
+                           {canEditInv && <button onClick={()=>delInv(m.id)} style={{background:"none",border:"none",color:"#EF4444",cursor:"pointer",fontSize:12}}>🗑️</button>}
                          </div>
                        ))}
                      </div>

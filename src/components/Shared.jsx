@@ -95,24 +95,29 @@ export function MembersSelect({ value=[], onChange, users, currentUser }) {
   )
 }
 
-export function LocationSelect({ value, onChange, locations, setLocations }) {
+// 📍 On adapte LocationSelect pour utiliser les objets de Supabase
+export function LocationSelect({ value, onChange, locations }) {
+  const safeLocs = Array.isArray(locations) ? locations : [];
   return (
-    <select style={{...S.inp, marginBottom:12}} value={value} onChange={e => {
-      if (e.target.value === "__NEW__") {
-        const n = prompt("Nouveau lieu :");
-        if (n && n.trim() !== "") { setLocations(p => [...new Set([...p, n.trim()])]); onChange(n.trim()); }
-      } else onChange(e.target.value);
-    }}>
+    <select style={{...S.inp, marginBottom:12}} value={value} onChange={e => onChange(e.target.value)}>
       <option value="">Sélectionner un lieu...</option>
-      {locations.sort((a,b)=>a.localeCompare(b,"fr")).map(l => <option key={l} value={l}>{l}</option>)}
-      <option value="__NEW__">➕ Nouveau lieu...</option>
+      {safeLocs.sort((a,b)=>a.name.localeCompare(b.name,"fr")).map(l => (
+        <option key={l.name} value={l.name}>{l.name}</option>
+      ))}
     </select>
   );
 }
 
-export function LocationLink({ location }) {
+// 📍 On adapte LocationLink pour ouvrir la bonne URL
+export function LocationLink({ location, locations = [] }) {
   if (!location) return null;
-  const url = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(location)}`;
+  
+  // Cherche l'objet lieu complet (qui contient l'URL) dans la liste
+  const locObj = (locations || []).find(l => l.name === location);
+  
+  // S'il y a une URL on la prend, sinon on fait une recherche Google Maps standard (évite l'erreur 404)
+  const url = locObj?.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+  
   return (
     <a href={url} target="_blank" rel="noreferrer" style={{color:"#4B9FFF", textDecoration:"underline"}} onClick={e => e.stopPropagation()}>
       {location}

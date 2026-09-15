@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
-import { supabase } from "./supabase"; // 🔌 Notre pont Supabase
+import { supabase } from "./supabase"; 
 import { 
   dDate, maxPromo, PROMS, isFamsExempt, SPORTS, Sp, DEV_EMAIL,
-  NW0, GR0, BUR0, LOCS0, MUSCU0, INV0, FB0,
-  dn, isDev, isCap, S, btnStyle 
+  LOCS0, FB0, dn, isDev, isCap, S, btnStyle 
 } from "./config";
 import { Lbl, FamsSelect, Av, UserProfileModal } from "./components/Shared";
 
@@ -64,16 +63,13 @@ function AuthScreen({users, setUsers, onLogin}) {
 
     try {
       const { error } = await supabase.from('users').insert([nu]);
-      
       if (error) {
         if (error.code === '23505') return setErr("Cet email est déjà utilisé.");
         throw error;
       }
-
       const localNu = {...nu, bannedSports:[], adminSports:[], mutedChats:[]};
       setUsers(p => [...p, localNu]); 
       onLogin(localNu);
-      
     } catch (err) {
       console.error(err);
       setErr("Erreur de connexion au serveur.");
@@ -235,6 +231,20 @@ export default function UAIApp() {
   const [users, setUsers] = useState([]); 
   const [events, setEvents] = useState([]);
   const [matches, setMatches] = useState([]);
+  const [locations, setLocations] = useState(LOCS0);
+  const [bureau, setBureau] = useState([]); 
+  const [news, setNews] = useState([]); 
+  const [groups, setGroups] = useState([]); 
+  const [chat, setChat] = useState({});
+  const [teams, setTeams] = useState([]);
+  const [challenges, setChallenges] = useState([]);
+
+  // 🆕 States pour l'onglet Infos passés à vide
+  const [partners, setPartners] = useState([]);
+  const [muscuList, setMuscuList] = useState([]);
+  const [inventory, setInventory] = useState([]);
+  const [feedbacks, setFeedbacks] = useState(FB0);
+
   const [isDbLoading, setIsDbLoading] = useState(true);
 
   useEffect(() => {
@@ -243,6 +253,18 @@ export default function UAIApp() {
         const { data: dbUsers } = await supabase.from('users').select('*');
         const { data: dbEvents } = await supabase.from('events').select('*');
         const { data: dbMatches } = await supabase.from('matches').select('*');
+        const { data: dbLocs } = await supabase.from('locations').select('*');
+        const { data: dbBureau } = await supabase.from('bureau').select('*'); 
+        const { data: dbNews } = await supabase.from('news').select('*'); 
+        const { data: dbGroups } = await supabase.from('groups').select('*');
+        const { data: dbTeams } = await supabase.from('teams').select('*');
+        const { data: dbChallenges } = await supabase.from('challenges').select('*');
+        const { data: dbMessages } = await supabase.from('messages').select('*');
+
+        // 🆕 Nouvelles requêtes Infos
+        const { data: dbPartners } = await supabase.from('partners').select('*');
+        const { data: dbMuscu } = await supabase.from('musculation').select('*');
+        const { data: dbInv } = await supabase.from('inventory').select('*');
 
         if (dbUsers) {
           const formattedUsers = dbUsers.map(u => ({
@@ -262,10 +284,7 @@ export default function UAIApp() {
           }
         }
 
-        if (dbEvents) {
-          setEvents(dbEvents.map(e => ({ ...e, sportId: e.sportid })));
-        }
-
+        if (dbEvents) setEvents(dbEvents.map(e => ({ ...e, sportId: e.sportid })));
         if (dbMatches) {
           setMatches(dbMatches.map(m => ({
             ...m, sportId: m.sportid, planningId: m.planningid,
@@ -273,6 +292,33 @@ export default function UAIApp() {
             likedBy: m.likedby || []
           })));
         }
+        if (dbLocs) setLocations(dbLocs);
+        if (dbBureau) setBureau(dbBureau.map(b => ({ id: b.id, role: b.role, userId: b.userid })));
+        if (dbNews) {
+           setNews(dbNews.map(n => ({
+              ...n, sportId: n.sportid, authorId: n.authorid, authorName: n.authorname, 
+              likedBy: n.likedby || [], comments: n.comments || []
+           })));
+        }
+        if (dbGroups) setGroups(dbGroups.map(g => ({...g, sportId: g.sportid})));
+        if (dbTeams) setTeams(dbTeams.map(t => ({...t, captainId: t.captainid})));
+        if (dbChallenges) setChallenges(dbChallenges.map(c => ({...c, sportId: c.sportid})));
+        
+        if (dbMessages) {
+           const chatObj = {};
+           dbMessages.forEach(m => {
+              if(!chatObj[m.chatid]) chatObj[m.chatid] = [];
+              chatObj[m.chatid].push({ id: m.id, userId: m.userid, text: m.text, time: m.time });
+           });
+           Object.keys(chatObj).forEach(k => chatObj[k].sort((a,b) => new Date(a.time) - new Date(b.time)));
+           setChat(chatObj);
+        }
+
+        // 🆕 Formatage des Infos
+        if (dbPartners) setPartners(dbPartners);
+        if (dbMuscu) setMuscuList(dbMuscu);
+        if (dbInv) setInventory(dbInv.map(i => ({...i, sportId: i.sportid})));
+
       } catch (error) {
         console.error("Erreur Supabase:", error);
       } finally {
@@ -308,14 +354,6 @@ export default function UAIApp() {
   const [cur, setCur] = useState(null);
   const [tab, setTab] = useState("planning"); const [slideDir, setSlideDir] = useState("fade-in");
   const [viewProfileId, setViewProfileId] = useState(null); 
-  
-  const [news, setNews] = useState(NW0); 
-  const [bureau, setBureau] = useState(BUR0); const [locations, setLocations] = useState(LOCS0);
-  const [partners, setPartners] = useState([{id:1, name:"Boulangerie Le Fournil", msg:"Merci pour les viennoiseries lors des tournois !", offer:"-10% sur présentation de la licence UAI"}]);
-  const [groups, setGroups] = useState(GR0); const [chat, setChat] = useState({});
-  const [muscuList, setMuscuList] = useState(MUSCU0); const [inventory, setInventory] = useState(INV0);
-  const [teams, setTeams] = useState([{id:1, name:"Les Anciens", sportId:"pitate", captainId:1, members:[]}]);
-  const [challenges, setChallenges] = useState([]); const [feedbacks, setFeedbacks] = useState(FB0);
 
   const user = cur ? users.find(u => u.id===cur.id)||cur : null;
   const tabsList = ["planning", "matches", "news", "info", "groupes", "account", ...(user && isDev(user) ? ["admin"] : [])];
@@ -399,9 +437,11 @@ export default function UAIApp() {
           {tab==="planning"&&<PlanningTab events={events} setEvents={setEvents} matches={matches} setMatches={setMatches} user={user} locations={locations} setLocations={setLocations} bureau={bureau} isMobile={typeof window!=="undefined"?window.innerWidth<768:false} winH={typeof window!=="undefined"?window.innerHeight:800}/>}
           {tab==="matches"&&<MatchesTab matches={matches} setMatches={setMatches} events={events} setEvents={setEvents} user={user} locations={locations} setLocations={setLocations} bureau={bureau}/>}
           {tab==="news"&&<NewsTab news={news} setNews={setNews} user={user} bureau={bureau}/>}
+          
           {tab==="info"&&<InfoTab bureau={bureau} users={users} user={user} partners={partners} setPartners={setPartners} muscuList={muscuList} setMuscuList={setMuscuList} inventory={inventory} setInventory={setInventory} onViewProfile={setViewProfileId} />}
+          
           {tab==="groupes"&&<GroupesTab groups={groups} setGroups={setGroups} users={users} setUsers={setUsers} user={user} chat={chat} setChat={setChat} teams={teams} setTeams={setTeams} challenges={challenges} setChallenges={setChallenges} bureau={bureau} events={events} setEvents={setEvents}/>}
-          {tab==="admin"&&<AdminTab users={users} setUsers={setUsers} bureau={bureau} setBureau={setBureau} feedbacks={feedbacks} setFeedbacks={setFeedbacks} />}
+          {tab==="admin"&&<AdminTab users={users} setUsers={setUsers} bureau={bureau} setBureau={setBureau} feedbacks={feedbacks} setFeedbacks={setFeedbacks} locations={locations} setLocations={setLocations} />}
           {tab==="account"&&<AccountTab user={user} setCurrentUser={setCur} users={users} setUsers={setUsers} feedbacks={feedbacks} setFeedbacks={setFeedbacks} />}
           
           <div style={{padding:"20px 0 40px", fontSize: 11, color: "#555", textTransform: "uppercase", letterSpacing: 1.5, textAlign: "center", lineHeight: 1.6}}>

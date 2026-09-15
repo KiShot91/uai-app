@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { supabase } from "../supabase";
 import { dn, Sp, S, btnStyle, SPORTS, fmtDate, isCap } from "../config";
 import { SecTitle, SubNav, Card, Tag, Av, MembersSelect, Lbl } from "../components/Shared";
 
@@ -6,7 +7,7 @@ export default function GroupesTab({groups, setGroups, users, setUsers, user, te
   const [view, setView] = useState("list"); 
   const [defisView, setDefisView] = useState("equipes"); 
   const [manageGroup, setManageGroup] = useState(null); 
-  const [viewLicence, setViewLicence] = useState(null); // 📄 Permet d'afficher la licence en grand
+  const [viewLicence, setViewLicence] = useState(null);
   const [msgInputs, setMsgInputs] = useState({});
   const chatScrollRef = useRef(null);
   
@@ -25,38 +26,58 @@ export default function GroupesTab({groups, setGroups, users, setUsers, user, te
   const [activeSub, setActiveSub] = useState({});
   const handleSubGroupChange = (sportId, sub) => setActiveSub(p => ({...p, [sportId]: sub}));
 
-  const sendMsg = (chatId) => {
+  // 💬 GESTION DES MESSAGES (Supabase)
+  const sendMsg = async (chatId) => {
     const txt = msgInputs[chatId];
     if(!txt || !txt.trim()) return;
-    setChat(p => ({
-        ...p, 
-        [chatId]: [...(p[chatId]||[]), {id: Date.now(), userId: user.id, text: txt.trim(), time: new Date().toISOString()}]
-    }));
-    setMsgInputs({...msgInputs, [chatId]: ""});
+    
+    const msgObj = { id: Date.now(), chatid: chatId, userid: user.id, text: txt.trim(), time: new Date().toISOString() };
+    
+    try {
+       const { error } = await supabase.from('messages').insert([msgObj]);
+       if (error) throw error;
+       
+       setChat(p => ({
+           ...p, 
+           [chatId]: [...(p[chatId]||[]), {id: msgObj.id, userId: msgObj.userid, text: msgObj.text, time: msgObj.time}]
+       }));
+       setMsgInputs({...msgInputs, [chatId]: ""});
+    } catch(e) { console.error(e); alert("Erreur d'envoi du message."); }
   };
 
-  const toggleMute = (chatId) => {
+  // 🔕 GESTION DU MUTE (Supabase)
+  const toggleMute = async (chatId) => {
     const muted = user.mutedChats || [];
     const newMuted = muted.includes(chatId) ? muted.filter(id => id !== chatId) : [...muted, chatId];
-    if (setUsers) {
-      setUsers(p => p.map(u => u.id === user.id ? {...u, mutedChats: newMuted} : u));
-    }
+    try {
+       const { error } = await supabase.from('users').update({ mutedchats: newMuted }).eq('id', user.id);
+       if (error) throw error;
+       if (setUsers) setUsers(p => p.map(u => u.id === user.id ? {...u, mutedChats: newMuted} : u));
+    } catch(e) { console.error(e); }
   };
 
-  const handleAssign = (sportId, uId, sub) => {
-    setGroups(prev => {
-        let grp = prev.find(g => g.sportId === sportId);
-        if (!grp) grp = { id: Date.now(), sportId, subgroups: {} };
-        const updatedSubs = { ...grp.subgroups };
-        
-        ["Équipe 1", "Équipe 2", "Équipe Fum's"].forEach(k => {
-            updatedSubs[k] = (updatedSubs[k]||[]).filter(id => id !== uId);
-        });
-        
-        if (sub !== "Aucune") updatedSubs[sub] = [...(updatedSubs[sub]||[]), uId];
-        
-        return [...prev.filter(g => g.sportId !== sportId), { ...grp, subgroups: updatedSubs }];
+  // 👥 AFFECTATION DES SOUS-GROUPES (Supabase)
+  const handleAssign = async (sportId, uId, sub) => {
+    let grp = groups.find(g => g.sportId === sportId);
+    const isNew = !grp;
+    if (!grp) grp = { id: Date.now(), sportId, subgroups: {} };
+    const updatedSubs = { ...grp.subgroups };
+    
+    ["Équipe 1", "Équipe 2", "Équipe Fum's"].forEach(k => {
+        updatedSubs[k] = (updatedSubs[k]||[]).filter(id => id !== uId);
     });
+    if (sub !== "Aucune") updatedSubs[sub] = [...(updatedSubs[sub]||[]), uId];
+    
+    try {
+       if (isNew) {
+          const { error } = await supabase.from('groups').insert([{ id: grp.id, sportid: sportId, subgroups: updatedSubs }]);
+          if (error) throw error;
+       } else {
+          const { error } = await supabase.from('groups').update({ subgroups: updatedSubs }).eq('id', grp.id);
+          if (error) throw error;
+       }
+       setGroups(prev => [...prev.filter(g => g.sportId !== sportId), { ...grp, subgroups: updatedSubs }]);
+    } catch(e) { console.error(e); alert("Erreur d'affectation."); }
   };
 
   const getVisibleSubGroups = (sportId) => {
@@ -71,35 +92,58 @@ export default function GroupesTab({groups, setGroups, users, setUsers, user, te
     return subs;
   };
 
-  const createTeam = () => {
+  // 🛡️ CRÉER UNE ÉQUIPE (Supabase)
+  const createTeam = async () => {
     if(!tForm.name) return; 
-    setTeams([...teams, {...tForm, id:Date.now(), captainId:user.id, requests:[]}]); 
-    setTForm({name:"", members:[]});
-    alert("Équipe créée avec succès !");
+    const newTeam = { id: Date.now(), name: tForm.name, captainid: user.id, members: tForm.members };
+    try {
+       const { error } = await supabase.from('teams').insert([newTeam]);
+       if (error) throw error;
+       setTeams([...teams, {...newTeam, captainId: user.id}]); 
+       setTForm({name:"", members:[]});
+       alert("Équipe créée avec succès !");
+    } catch(e) { console.error(e); alert("Erreur lors de la création."); }
   };
 
-  const sendChallenge = () => {
+  // ⚔️ LANCER UN DÉFI (Supabase)
+  const sendChallenge = async () => {
     if(!dForm.cid || !dForm.vid || !dForm.sportId) return alert("Veuillez remplir tous les champs");
-    setChallenges([...challenges, {...dForm, id:Date.now(), status: "pending", date: new Date().toISOString()}]);
-    setDForm({cid:"", vid:"", sportId:"pitate", msg:""});
-    alert("Défi envoyé à l'équipe adverse ! ⚔️");
-    setDefisView("mes_defis");
+    const newChall = { id: Date.now(), cid: Number(dForm.cid), vid: Number(dForm.vid), sportid: dForm.sportId, msg: dForm.msg, status: "pending", date: new Date().toISOString() };
+    try {
+       const { error } = await supabase.from('challenges').insert([newChall]);
+       if (error) throw error;
+       setChallenges([...challenges, {...newChall, sportId: dForm.sportId}]);
+       setDForm({cid:"", vid:"", sportId:"pitate", msg:""});
+       alert("Défi envoyé à l'équipe adverse ! ⚔️");
+       setDefisView("mes_defis");
+    } catch(e) { console.error(e); alert("Erreur d'envoi du défi."); }
   };
 
-  const acceptChallenge = (cId) => {
-    setChallenges(p => p.map(c => c.id === cId ? {...c, status:"accepted"} : c));
+  // ✅ ACCEPTER UN DÉFI -> AJOUT AU PLANNING (Supabase)
+  const acceptChallenge = async (cId) => {
     const challenge = challenges.find(c => c.id === cId);
-    
-    if (challenge && setEvents) {
-      const challenger = teams.find(t => t.id === Number(challenge.cid));
-      const myTeamTargeted = teams.find(t => t.id === Number(challenge.vid));
-      const newEvent = {
-        id: `defi-${challenge.id}`, sportId: challenge.sportId, date: new Date().toISOString().slice(0, 10), time: "18:00", dur: 90,
-        location: "Terrain à définir", type: "defis", title: `${challenger?.name || "Inconnu"} VS ${myTeamTargeted?.name || "Inconnu"}`
-      };
-      setEvents(p => [...p, newEvent]);
-    }
-    alert("Défi accepté et ajouté au planning !");
+    if (!challenge) return;
+    try {
+       const { error: errC } = await supabase.from('challenges').update({ status: 'accepted' }).eq('id', cId);
+       if (errC) throw errC;
+
+       if (setEvents) {
+         const challenger = teams.find(t => t.id === Number(challenge.cid));
+         const myTeamTargeted = teams.find(t => t.id === Number(challenge.vid));
+         const eventId = Date.now();
+         const newEvent = {
+           id: eventId, sportid: challenge.sportId || challenge.sportid, date: new Date().toISOString().slice(0, 10), time: "18:00", dur: 90,
+           location: "Terrain à définir", type: "defis", title: `${challenger?.name || "Inconnu"} VS ${myTeamTargeted?.name || "Inconnu"}`
+         };
+         
+         const { error: errE } = await supabase.from('events').insert([newEvent]);
+         if (errE) throw errE;
+         
+         setEvents(p => [...p, {...newEvent, sportId: newEvent.sportid}]);
+       }
+       setChallenges(p => p.map(c => c.id === cId ? {...c, status:"accepted"} : c));
+       alert("Défi accepté et ajouté au planning !");
+    } catch(e) { console.error(e); alert("Erreur lors de l'acceptation."); }
   };
 
   return (
@@ -139,7 +183,6 @@ export default function GroupesTab({groups, setGroups, users, setUsers, user, te
                              <div style={{fontSize:14, fontWeight:700}}>{dn(u)}</div>
                              <div style={{fontSize:11, color:'#888', display:'flex', gap:6, alignItems:'center'}}>
                                 {u.sexe}
-                                {/* 📄 BADGE LICENCE POUR LE CAPITAINE */}
                                 {u.licenceFile ? (
                                   <span onClick={(e)=>{e.stopPropagation(); setViewLicence(u.licenceFile);}} style={{background:"#16a34a33", color:"#4ade80", padding:"2px 6px", borderRadius:4, cursor:"pointer", fontWeight:700}}>📄 Voir Licence</span>
                                 ) : (
@@ -307,7 +350,10 @@ export default function GroupesTab({groups, setGroups, users, setUsers, user, te
                         {c.msg && <div style={{fontSize:13, color:"#ccc", fontStyle:"italic", marginBottom:16, background:"#111", padding:10, borderRadius:8}}>"{c.msg}"</div>}
                         
                         <div style={{display:"flex", gap:10}}>
-                          <button onClick={()=>setChallenges(p=>p.filter(x=>x.id!==c.id))} style={{flex:1, background:"#111", color:"#888", border:"1px solid #333", borderRadius:8, padding:"8px 0", fontSize:12, fontWeight:700, cursor:"pointer"}}>Refuser</button>
+                          <button onClick={async ()=>{
+                              await supabase.from('challenges').delete().eq('id', c.id);
+                              setChallenges(p=>p.filter(x=>x.id!==c.id));
+                          }} style={{flex:1, background:"#111", color:"#888", border:"1px solid #333", borderRadius:8, padding:"8px 0", fontSize:12, fontWeight:700, cursor:"pointer"}}>Refuser</button>
                           <button onClick={()=>acceptChallenge(c.id)} style={{flex:2, background:S.red, color:"white", border:"none", borderRadius:8, padding:"8px 0", fontSize:12, fontWeight:700, cursor:"pointer"}}>Accepter le défi ⚔️</button>
                         </div>
                       </Card>

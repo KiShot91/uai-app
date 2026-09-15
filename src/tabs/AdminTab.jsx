@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabase";
-import { dn, BURS_ROLE_IDS, ROLES, SPORTS, S } from "../config";
-import { SecTitle, Card, Lbl, Av, Tag, btnStyle } from "../components/Shared";
+import { dn, BURS_ROLE_IDS, ROLES, SPORTS, S, btnStyle } from "../config";
+import { SecTitle, Card, Lbl, Av, Tag } from "../components/Shared";
 
 export default function AdminTab({users, setUsers, bureau, setBureau, feedbacks, setFeedbacks, locations, setLocations}) {
   const [selectedUser, setSelectedUser] = useState("");

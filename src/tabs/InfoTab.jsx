@@ -38,7 +38,8 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
     }
   };
   
-  const captains = users.filter(u => (u.adminSports||[]).length > 0 && !isDev(u));
+  // CORRECTION ICI : u.adminsports (tout en minuscules comme sur Supabase)
+  const captains = users.filter(u => (u.adminsports||[]).length > 0 && !isDev(u));
   
   // 💪 GESTION MUSCULATION (Supabase)
   const [formM, setFormM] = useState({cat:"Machines", name:"", desc:""});

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { S, btnStyle, FAMS_OPTIONS, ini, dn, handleComment, isDev, BURS_ROLE_IDS, ROLES, ziLabel, Sp, fmtDate } from "../config";
+import { supabase } from "../supabase";
+import { S, btnStyle, FAMS_OPTIONS, ini, dn, handleComment, isDev, isBurs, BURS_ROLE_IDS, ROLES, ziLabel, Sp, fmtDate } from "../config";
 
 export const Card = ({children, style={}, onClick}) => <div onClick={onClick} style={{background:S.card,borderRadius:16,border:`1px solid ${S.cardBorder}`,overflow:"hidden",cursor:onClick?"pointer":"default",height:"100%",...style}}>{children}</div>;
 export const Lbl = ({t}) => <div style={{fontSize:10,color:"#555",textTransform:"uppercase",letterSpacing:2,marginBottom:5}}>{t}</div>;
@@ -95,27 +96,61 @@ export function MembersSelect({ value=[], onChange, users, currentUser }) {
   )
 }
 
-// 📍 On adapte LocationSelect pour utiliser les objets de Supabase
-export function LocationSelect({ value, onChange, locations }) {
+// 📍 LocationSelect avec option "Ajouter un lieu"
+export function LocationSelect({ value, onChange, locations, setLocations, user, bureau }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [newLoc, setNewLoc] = useState({ name: "", url: "" });
   const safeLocs = Array.isArray(locations) ? locations : [];
+
+  const canAddLoc = user && (isDev(user) || isBurs(user, bureau) || (user.adminsports || user.adminSports || []).length > 0);
+
+  const handleAdd = async () => {
+    if (!newLoc.name) return;
+    try {
+      const { error } = await supabase.from('locations').insert([{ name: newLoc.name, url: newLoc.url }]);
+      if (error) throw error;
+      const updatedLocs = [...safeLocs, newLoc];
+      if (setLocations) setLocations(updatedLocs);
+      onChange(newLoc.name);
+      setShowAdd(false);
+      setNewLoc({ name: "", url: "" });
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de l'ajout du lieu.");
+    }
+  };
+
   return (
-    <select style={{...S.inp, marginBottom:12}} value={value} onChange={e => onChange(e.target.value)}>
-      <option value="">Sélectionner un lieu...</option>
-      {safeLocs.sort((a,b)=>a.name.localeCompare(b.name,"fr")).map(l => (
-        <option key={l.name} value={l.name}>{l.name}</option>
-      ))}
-    </select>
+    <div style={{marginBottom:12}}>
+      <div style={{display:"flex", gap:8}}>
+        <select style={{...S.inp, flex:1, marginBottom:0}} value={value} onChange={e => onChange(e.target.value)}>
+          <option value="">Sélectionner un lieu...</option>
+          {safeLocs.sort((a,b)=>a.name.localeCompare(b.name,"fr")).map(l => (
+            <option key={l.name} value={l.name}>{l.name}</option>
+          ))}
+        </select>
+        {canAddLoc && (
+          <button onClick={() => setShowAdd(!showAdd)} style={{background:showAdd?"#1a1a1a":S.red, color:showAdd?"#888":"white", border:"1px solid #333", borderRadius:8, padding:"0 14px", cursor:"pointer", fontWeight:900, fontSize:18}}>
+            {showAdd ? "✕" : "+"}
+          </button>
+        )}
+      </div>
+      {showAdd && canAddLoc && (
+        <div className="fade-in" style={{background:"#111", padding:12, borderRadius:8, marginTop:8, border:"1px solid #222"}}>
+          <div style={{fontSize:11, color:S.red, fontWeight:700, marginBottom:8}}>NOUVEAU LIEU</div>
+          <input style={{...S.inp, marginBottom:8, padding:"8px", fontSize:12}} placeholder="Nom du lieu (ex: Salle Stéhélin)..." value={newLoc.name} onChange={e=>setNewLoc({...newLoc, name:e.target.value})} />
+          <input style={{...S.inp, marginBottom:8, padding:"8px", fontSize:12}} placeholder="Lien Google Maps (optionnel)..." value={newLoc.url} onChange={e=>setNewLoc({...newLoc, url:e.target.value})} />
+          <button onClick={handleAdd} style={{background:S.red, color:"white", border:"none", borderRadius:6, padding:"8px", width:"100%", cursor:"pointer", fontSize:12, fontWeight:700}}>Enregistrer le lieu</button>
+        </div>
+      )}
+    </div>
   );
 }
 
-// 📍 On adapte LocationLink pour ouvrir la bonne URL
+// 📍 LocationLink adapté
 export function LocationLink({ location, locations = [] }) {
   if (!location) return null;
-  
-  // Cherche l'objet lieu complet (qui contient l'URL) dans la liste
   const locObj = (locations || []).find(l => l.name === location);
-  
-  // S'il y a une URL on la prend, sinon on fait une recherche Google Maps standard (évite l'erreur 404)
   const url = locObj?.url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
   
   return (
@@ -154,7 +189,7 @@ export const RenderTitles = ({u, bureau}) => {
   const userBursRoles = bureau.filter(b=>b.userId===u.id);
   const bursLabels = userBursRoles.filter(b=>BURS_ROLE_IDS.includes(b.role)).map(b => ROLES.find(r=>r.id===b.role)?.label).filter(Boolean);
   const hasZiblec = userBursRoles.some(b=>b.role==="ziblec");
-  const caps = (u.adminSports||[]).filter(sid=>sid!=="muscu" && sid!=="tuverras");
+  const caps = (u.adminsports||u.adminSports||[]).filter(sid=>sid!=="muscu" && sid!=="tuverras");
 
   return (
     <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:3, alignItems:"center"}}>

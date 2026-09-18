@@ -275,7 +275,7 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
             <div><Lbl t="Heure"/><input type="time" style={S.inp} value={form.time} onChange={e=>up("time",e.target.value)}/></div>
           </div>
           <Lbl t="Durée (min)"/><input type="number" style={{...S.inp,marginBottom:10}} value={form.dur} onChange={e=>up("dur",e.target.value)} />
-          <Lbl t="Lieu"/><LocationSelect value={form.location} onChange={v => up("location", v)} locations={locations} setLocations={setLocations} />
+          <Lbl t="Lieu"/><LocationSelect value={form.location} onChange={v => up("location", v)} locations={locations} setLocations={setLocations} user={user} bureau={bureau} />
           
           {!editEv && (
              <label style={{display:"flex", alignItems:"center", gap:8, fontSize:13, color:"#ccc", cursor:"pointer", margin:"14px 0"}}>

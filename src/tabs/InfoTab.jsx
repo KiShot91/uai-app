@@ -15,7 +15,7 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
   const canEditMuscu = isDev(user) || inBurs || isCap(user, "muscu");
   const canEditPartners = isDev(user) || inBurs;
   
-  // 🤝 GESTION DES PARTENAIRES (Supabase)
+  // 🤝 GESTION DES PARTENAIRES
   const addPartner = async () => { 
     if (!formP.name) return; 
     const newItem = { id: Date.now(), name: formP.name, msg: formP.msg, offer: formP.offer };
@@ -38,10 +38,10 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
     }
   };
   
-  // CORRECTION ICI : u.adminsports (tout en minuscules comme sur Supabase)
-  const captains = users.filter(u => (u.adminsports||[]).length > 0 && !isDev(u));
+  // K'Pi'T'N : Les Devs sont maintenant inclus !
+  const captains = users.filter(u => (u.adminsports || u.adminSports || []).length > 0);
   
-  // 💪 GESTION MUSCULATION (Supabase)
+  // 💪 GESTION MUSCULATION
   const [formM, setFormM] = useState({cat:"Machines", name:"", desc:""});
   const addMuscu = async () => { 
     if(!formM.name) return; 
@@ -64,7 +64,7 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
     }
   };
   
-  // 📦 GESTION INVENTAIRE (Supabase)
+  // 📦 GESTION INVENTAIRE
   const [formI, setFormI] = useState({sportId:"pitate", name:"", qty:1, desc:""});
   const addInv = async () => { 
     if(!formI.name) return; 
@@ -88,10 +88,10 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
     }
   };
 
-  // Sécurisation de la recherche 
+  // Sécurisation de la recherche : Les Devs sont maintenant inclus
   const annuaireList = searchM 
-    ? users.filter(u => !isDev(u) && [u.nom, u.prenom, u.bucque, ...(Array.isArray(u.fams)?u.fams:[u.fams])].some(v=>String(v||"").toLowerCase().includes(searchM.toLowerCase())))
-    : users.filter(u => !isDev(u));
+    ? users.filter(u => [u.nom, u.prenom, u.bucque, ...(Array.isArray(u.fams)?u.fams:[u.fams])].some(v=>String(v||"").toLowerCase().includes(searchM.toLowerCase())))
+    : users;
 
   return(
     <div className="fade-in" style={{maxWidth: 800, margin: "0 auto"}}>

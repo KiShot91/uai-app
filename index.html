@@ -1,13 +1,36 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr" translate="no">
   <head>
     <meta charset="UTF-8" />
+    
+    <!-- Bloquer totalement la traduction automatique (ex: Google Traduction) -->
+    <meta name="google" content="notranslate" />
+    
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>uai-app</title>
+    <!-- Viewport bloqué pour donner un effet "application native" (pas de zoom bizarre) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>UAI Bordel's</title>
+    
+    <!-- Liens pour la PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#080808" />
+    <link rel="apple-touch-icon" href="/logo192.png" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Script d'activation du Service Worker pour l'installation sur téléphone -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then(registration => {
+            console.log('[PWA] Service Worker activé avec succès.');
+          }).catch(err => {
+            console.error('[PWA] Erreur d\'activation du Service Worker:', err);
+          });
+        });
+      }
+    </script>
   </body>
 </html>

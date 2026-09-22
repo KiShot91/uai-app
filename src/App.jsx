@@ -16,8 +16,9 @@ import AccountTab from "./tabs/AccountTab";
 
 function AuthScreen({users, setUsers, onLogin}) {
   const [mode, setMode] = useState("login");
+  const [regType, setRegType] = useState(null); // NOUVEAU : 'gadz', 'alterns', 'bachs'
   const [showP, setShowP] = useState(false);
-  const [f, setF] = useState({email:"",password:"",nom:"",prenom:"",bucque:"",fams:[],proms:String(maxPromo),sexe:"Homme",sports:[],phone:"", rgpd:false});
+  const [f, setF] = useState({email:"",password:"",nom:"",prenom:"",bucque:"",fams:[],proms:"",sexe:"Homme",sports:[],phone:"", rgpd:false});
   const [err, setErr] = useState("");
   const [remember, setRemember] = useState(true);
   const [resetContact, setResetContact] = useState("");
@@ -28,6 +29,11 @@ function AuthScreen({users, setUsers, onLogin}) {
   
   const sportsSorted = [...SPORTS.filter(s=>s.id!=="general" && s.id!=="tuverras")];
 
+  // Listes dynamiques Altern's et Bachs
+  const alternsProms = [...Array.from({length: 9}, (_, i) => `GM0${i+1}`), ...Array.from({length: 31}, (_, i) => `PM${String(i+1).padStart(2, '0')}`)];
+  const bachsProms = ["2026", "2025", "2024", "2023"];
+  const chepsList = ["Ruthénium", "Palladium", "Osmium", "Titanium"];
+
   const login = () => {
     const u = users.find(u => u.email===f.email && u.password===f.password);
     if(u) { onLogin(u); if(remember) localStorage.setItem("uai_user", u.id); } 
@@ -35,10 +41,20 @@ function AuthScreen({users, setUsers, onLogin}) {
   };
 
   const register = async () => {
-    if (!f.nom||!f.prenom||!f.email||!f.password||!f.sexe||!f.bucque||!f.phone||!f.proms) return setErr("Remplissez tous les champs obligatoires *");
-    if (!isFamsExempt(f.proms) && f.fams.length===0) return setErr(`La Fam's est obligatoire (sauf pour la Bo ${maxPromo} jusqu'au 7 Nov)`);
+    // Vérifications communes
+    if (!f.nom||!f.prenom||!f.email||!f.password||!f.sexe||!f.phone||!f.proms) return setErr("Remplissez tous les champs obligatoires *");
     if (!f.rgpd) return setErr("Vous devez accepter les conditions d'utilisation des données.");
+    
+    // Vérifications spécifiques au profil
+    if (regType === 'gadz') {
+       if (!f.bucque) return setErr("La Bucque est obligatoire *");
+       if (!isFamsExempt(f.proms) && f.fams.length===0) return setErr(`La Fam's est obligatoire (sauf pour la Bo ${maxPromo} jusqu'au 7 Nov)`);
+    }
+    if (regType === 'alterns' && f.fams.length===0) return setErr("Le Chep's est obligatoire *");
 
+    // Formatage des données avant envoi
+    const bucqueFinal = regType === 'gadz' ? f.bucque : "";
+    const famsFinal = regType === 'bachs' ? [] : f.fams;
     const role = f.email.toLowerCase()===DEV_EMAIL ? "developer" : "user";
     
     const nu = {
@@ -47,8 +63,8 @@ function AuthScreen({users, setUsers, onLogin}) {
       password: f.password,
       nom: f.nom,
       prenom: f.prenom,
-      bucque: f.bucque,
-      fams: f.fams,
+      bucque: bucqueFinal,
+      fams: famsFinal,
       proms: f.proms,
       sexe: f.sexe,
       sports: f.sports,
@@ -77,7 +93,7 @@ function AuthScreen({users, setUsers, onLogin}) {
   };
 
   const sendReset = () => { if(!resetContact) return setErr("Entrez une information valide"); setResetSent(true); setErr(""); }
-  const handleKeyDown = (e) => { if (e.key === "Enter") { if (mode === "login") login(); else if (mode === "register") register(); else if (mode==="forgot") sendReset(); } }
+  const handleKeyDown = (e) => { if (e.key === "Enter") { if (mode === "login") login(); else if (mode === "register" && regType) register(); else if (mode==="forgot") sendReset(); } }
 
   return (
     <div style={{minHeight:"100dvh",background:S.bg,display:"flex",flexDirection:"column",fontFamily:"'Barlow',sans-serif",overflow:"hidden"}}>
@@ -116,18 +132,51 @@ function AuthScreen({users, setUsers, onLogin}) {
               ))}
             </div>
 
-            {mode==="register" && (
+            {mode==="register" && !regType && (
+               <div className="fade-in" style={{display:"flex", flexDirection:"column", gap:10, marginTop:10}}>
+                  <div style={{color:"#aaa", textAlign:"center", marginBottom:4, fontSize:13, fontWeight:600, textTransform:"uppercase", letterSpacing:1}}>Sélectionnez votre profil</div>
+                  <button onClick={() => { setRegType("gadz"); setF(p=>({...p, proms:String(maxPromo)})); setErr(""); }} style={{...btnStyle("#1a1a1a", "white"), padding:"14px", border:"1px solid #333", fontSize:16}}>Gadz'Art</button>
+                  <button onClick={() => { setRegType("alterns"); setF(p=>({...p, proms:""})); setErr(""); }} style={{...btnStyle("#1a1a1a", "white"), padding:"14px", border:"1px solid #333", fontSize:16}}>Altern's</button>
+                  <button onClick={() => { setRegType("bachs"); setF(p=>({...p, proms:""})); setErr(""); }} style={{...btnStyle("#1a1a1a", "white"), padding:"14px", border:"1px solid #333", fontSize:16}}>Bachs</button>
+               </div>
+            )}
+
+            {mode==="register" && regType && (
               <div className="fade-in" style={{display:"flex",flexDirection:"column",gap:10}}>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><div><Lbl t="Nom *"/><input style={S.inp} placeholder="Predon" value={f.nom} onChange={e=>up("nom",e.target.value)} onKeyDown={handleKeyDown}/></div><div><Lbl t="Prénom *"/><input style={S.inp} placeholder="Robin" value={f.prenom} onChange={e=>up("prenom",e.target.value)} onKeyDown={handleKeyDown}/></div></div>
-                <div><Lbl t="Bucque *"/><input style={S.inp} placeholder="Ki'Shot" value={f.bucque} onChange={e=>up("bucque",e.target.value)} onKeyDown={handleKeyDown}/></div>
+                <button onClick={() => {setRegType(null); setErr("");}} style={{background:"none",border:"none",color:S.red,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:700,textAlign:"left",marginBottom:4,padding:0}}>← Changer de profil</button>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><div><Lbl t="Nom *"/><input style={S.inp} placeholder="Ex: Dupont" value={f.nom} onChange={e=>up("nom",e.target.value)} onKeyDown={handleKeyDown}/></div><div><Lbl t="Prénom *"/><input style={S.inp} placeholder="Ex: Jean" value={f.prenom} onChange={e=>up("prenom",e.target.value)} onKeyDown={handleKeyDown}/></div></div>
+                
+                {regType === "gadz" && (
+                   <div><Lbl t="Bucque *"/><input style={S.inp} placeholder="Ki'Shot" value={f.bucque} onChange={e=>up("bucque",e.target.value)} onKeyDown={handleKeyDown}/></div>
+                )}
+
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                    <div><Lbl t="Sexe *"/><select style={S.inp} value={f.sexe} onChange={e=>up("sexe",e.target.value)}><option value="Homme">Homme</option><option value="Femme">Femme</option></select></div>
-                   <div><Lbl t="Prom's *"/><select style={S.inp} value={f.proms} onChange={e=>up("proms",e.target.value)}><option value="">Bo...</option>{PROMS.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                   <div>
+                      <Lbl t={regType === "gadz" ? "Prom's *" : "Promotion *"}/>
+                      <select style={S.inp} value={f.proms} onChange={e=>up("proms",e.target.value)}>
+                         <option value="">Choisir...</option>
+                         {regType === "gadz" && PROMS.map(p => <option key={p} value={p}>{p}</option>)}
+                         {regType === "alterns" && alternsProms.map(p => <option key={p} value={p}>{p}</option>)}
+                         {regType === "bachs" && bachsProms.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                   </div>
                 </div>
+                
                 <div style={{display:"flex", gap:10, alignItems:"flex-start"}}>
-                   <div style={{flex:1}}><Lbl t={`Fam's${isFamsExempt(f.proms)?" (Optionnel)":" *"}`}/><FamsSelect value={f.fams} onChange={v=>up("fams",v)} /></div>
-                   <div style={{flex:1}}><Lbl t="Téléphone *"/><input style={S.inp} placeholder="07 82 30 26 03" value={f.phone} onChange={e=>up("phone",e.target.value)} onKeyDown={handleKeyDown}/></div>
+                   {regType === "gadz" && <div style={{flex:1}}><Lbl t={`Fam's${isFamsExempt(f.proms)?" (Optionnel)":" *"}`}/><FamsSelect value={f.fams} onChange={v=>up("fams",v)} /></div>}
+                   {regType === "alterns" && (
+                      <div style={{flex:1}}>
+                         <Lbl t="Chep's *"/>
+                         <select style={S.inp} value={f.fams[0] || ""} onChange={e=>up("fams", [e.target.value])}>
+                            <option value="">Sélectionner...</option>
+                            {chepsList.map(c => <option key={c} value={c}>{c}</option>)}
+                         </select>
+                      </div>
+                   )}
+                   <div style={{flex:regType==="bachs"?"none":1, width:regType==="bachs"?"100%":"auto"}}><Lbl t="Téléphone *"/><input style={S.inp} placeholder="07 XX XX XX XX" value={f.phone} onChange={e=>up("phone",e.target.value)} onKeyDown={handleKeyDown}/></div>
                 </div>
+                
                 <div>
                   <Lbl t={`Sports (${f.sports.length})`}/>
                   <div style={{background:"#0e0e0e",borderRadius:12,border:"1px solid #1e1e1e",padding:10,maxHeight:180,overflowY:"auto"}} className="no-scrollbar">
@@ -139,16 +188,20 @@ function AuthScreen({users, setUsers, onLogin}) {
               </div>
             )}
 
-            <div className="fade-in"><Lbl t="Email *"/><input style={S.inp} type="email" placeholder="mail perso" value={f.email} onChange={e=>up("email",e.target.value)} onKeyDown={handleKeyDown}/></div>
-            <div className="fade-in">
-              <Lbl t="Mot de passe *"/>
-              <div style={{position:"relative", display:"flex", alignItems:"center"}}>
-                <input style={{...S.inp, paddingRight:40}} type={showP?"text":"password"} placeholder="..." value={f.password} onChange={e=>up("password",e.target.value)} onKeyDown={handleKeyDown}/>
-                <button onClick={()=>setShowP(!showP)} style={{position:"absolute", right:5, background:"transparent", border:"none", color:"#666", cursor:"pointer", fontSize:18}}>👁️</button>
-              </div>
-            </div>
+            {(mode==="login" || (mode==="register" && regType)) && (
+               <>
+                  <div className="fade-in"><Lbl t="Email *"/><input style={S.inp} type="email" placeholder="mail perso ou arts" value={f.email} onChange={e=>up("email",e.target.value)} onKeyDown={handleKeyDown}/></div>
+                  <div className="fade-in">
+                     <Lbl t="Mot de passe *"/>
+                     <div style={{position:"relative", display:"flex", alignItems:"center"}}>
+                        <input style={{...S.inp, paddingRight:40}} type={showP?"text":"password"} placeholder="..." value={f.password} onChange={e=>up("password",e.target.value)} onKeyDown={handleKeyDown}/>
+                        <button onClick={()=>setShowP(!showP)} style={{position:"absolute", right:5, background:"transparent", border:"none", color:"#666", cursor:"pointer", fontSize:18}}>👁️</button>
+                     </div>
+                  </div>
+               </>
+            )}
             
-            {mode==="register" && (
+            {mode==="register" && regType && (
               <label className="fade-in" style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:11,color:"#aaa",cursor:"pointer", marginTop:4}}>
                  <input type="checkbox" checked={f.rgpd} onChange={e=>up("rgpd",e.target.checked)} style={{accentColor:S.red, marginTop:2}}/>
                  <span>J'accepte que mes données soient utilisées par l'UAI Bordel's dans le cadre de l'application. *</span>
@@ -165,7 +218,10 @@ function AuthScreen({users, setUsers, onLogin}) {
             )}
 
             {err && <div className="fade-in" style={{color:"#EF4444",fontSize:13,textAlign:"center",padding:"6px 12px",background:"#EF444411",borderRadius:8}}>{err}</div>}
-            <button className="fade-in" onClick={mode==="login"?login:register} style={{...btnStyle(),marginTop:2}}>{mode==="login"?"Se connecter":"Créer mon compte"}</button>
+            
+            {(mode==="login" || (mode==="register" && regType)) && (
+               <button className="fade-in" onClick={mode==="login"?login:register} style={{...btnStyle(),marginTop:2}}>{mode==="login"?"Se connecter":"Créer mon compte"}</button>
+            )}
           </div>
         )}
       </div>
@@ -179,6 +235,25 @@ function AuthScreen({users, setUsers, onLogin}) {
 
 function Header({user, onAvatarClick, notifs}) {
   const [showNotif, setShowNotif] = useState(false);
+  
+  // 💾 Gestion locale des notifications lues
+  const [readNotifs, setReadNotifs] = useState(() => {
+     try { return JSON.parse(localStorage.getItem("uai_read_notifs")) || []; } catch(e) { return []; }
+  });
+
+  // Filtre les notifications pour ne garder que celles non-lues
+  const activeNotifs = notifs.filter(n => !readNotifs.includes(n.msg));
+
+  const toggleNotifs = () => {
+     // Quand on REFERME la cloche, on marque tout ce qui s'affichait comme "lu"
+     if (showNotif && activeNotifs.length > 0) {
+        const updated = [...readNotifs, ...activeNotifs.map(n => n.msg)];
+        setReadNotifs(updated);
+        localStorage.setItem("uai_read_notifs", JSON.stringify(updated));
+     }
+     setShowNotif(!showNotif);
+  };
+
   return (
     <div style={{padding:"11px 18px",background:"#0c0c0c",borderBottom:"1px solid #1a1a1a",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50}}>
       <div style={{display:"flex", alignItems:"center", gap:10}}>
@@ -190,12 +265,13 @@ function Header({user, onAvatarClick, notifs}) {
       </div>
       <div style={{display:"flex",alignItems:"center",gap:12}}>
         <div style={{position:"relative"}}>
-           <button onClick={()=>setShowNotif(!showNotif)} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",padding:0}}>🔔</button>
-           {notifs.length>0 && <div style={{position:"absolute",top:-2,right:-2,width:10,height:10,background:S.red,borderRadius:"50%",border:"2px solid #0c0c0c"}}></div>}
+           <button onClick={toggleNotifs} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",padding:0}}>🔔</button>
+           {/* La pastille rouge s'affiche que si on a des activeNotifs non-lues */}
+           {activeNotifs.length>0 && <div style={{position:"absolute",top:-2,right:-2,width:10,height:10,background:S.red,borderRadius:"50%",border:"2px solid #0c0c0c"}}></div>}
            {showNotif && (
              <div className="fade-in" style={{position:"absolute",top:30,right:0,width:260,background:S.card,border:`1px solid ${S.cardBorder}`,borderRadius:12,padding:12,boxShadow:"0 10px 20px rgba(0,0,0,0.8)",maxHeight:300,overflowY:"auto"}}>
                <div style={{fontSize:12,fontWeight:700,marginBottom:10,color:"white"}}>NOTIFICATIONS</div>
-               {notifs.length===0?<div style={{fontSize:11,color:"#666"}}>Aucune notification</div>:notifs.map((n,i)=><div key={i} style={{fontSize:12,padding:"8px",borderBottom:"1px solid #1a1a1a",color:"#ccc"}}>{n.msg}</div>)}
+               {activeNotifs.length===0?<div style={{fontSize:11,color:"#666"}}>Aucune nouvelle notification</div>:activeNotifs.map((n,i)=><div key={i} style={{fontSize:12,padding:"8px",borderBottom:"1px solid #1a1a1a",color:"#ccc"}}>{n.msg}</div>)}
              </div>
            )}
         </div>
@@ -239,7 +315,7 @@ export default function UAIApp() {
   const [teams, setTeams] = useState([]);
   const [challenges, setChallenges] = useState([]);
 
-  // 🆕 States pour l'onglet Infos passés à vide
+  // States pour l'onglet Infos passés à vide
   const [partners, setPartners] = useState([]);
   const [muscuList, setMuscuList] = useState([]);
   const [inventory, setInventory] = useState([]);
@@ -261,7 +337,6 @@ export default function UAIApp() {
         const { data: dbChallenges } = await supabase.from('challenges').select('*');
         const { data: dbMessages } = await supabase.from('messages').select('*');
 
-        // 🆕 Nouvelles requêtes Infos
         const { data: dbPartners } = await supabase.from('partners').select('*');
         const { data: dbMuscu } = await supabase.from('musculation').select('*');
         const { data: dbInv } = await supabase.from('inventory').select('*');
@@ -314,7 +389,6 @@ export default function UAIApp() {
            setChat(chatObj);
         }
 
-        // 🆕 Formatage des Infos
         if (dbPartners) setPartners(dbPartners);
         if (dbMuscu) setMuscuList(dbMuscu);
         if (dbInv) setInventory(dbInv.map(i => ({...i, sportId: i.sportid})));
@@ -367,7 +441,7 @@ export default function UAIApp() {
 
   const [touchStart, setTouchStart] = useState(null);
   const onTouchStart = (e) => { 
-    if(e.target.closest('.no-swipe') || e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea')) return; 
+    if(e.target.closest('.no-swipe') || e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea') || e.target.closest('select')) return; 
     setTouchStart({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY, time: Date.now() }); 
   };
   

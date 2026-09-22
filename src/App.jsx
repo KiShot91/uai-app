@@ -16,7 +16,7 @@ import AccountTab from "./tabs/AccountTab";
 
 function AuthScreen({users, setUsers, onLogin}) {
   const [mode, setMode] = useState("login");
-  const [regType, setRegType] = useState(null); // NOUVEAU : 'gadz', 'alterns', 'bachs'
+  const [regType, setRegType] = useState(null);
   const [showP, setShowP] = useState(false);
   const [f, setF] = useState({email:"",password:"",nom:"",prenom:"",bucque:"",fams:[],proms:"",sexe:"Homme",sports:[],phone:"", rgpd:false});
   const [err, setErr] = useState("");
@@ -29,7 +29,6 @@ function AuthScreen({users, setUsers, onLogin}) {
   
   const sportsSorted = [...SPORTS.filter(s=>s.id!=="general" && s.id!=="tuverras")];
 
-  // Listes dynamiques Altern's et Bachs
   const alternsProms = [...Array.from({length: 9}, (_, i) => `GM0${i+1}`), ...Array.from({length: 31}, (_, i) => `PM${String(i+1).padStart(2, '0')}`)];
   const bachsProms = ["2026", "2025", "2024", "2023"];
   const chepsList = ["Ruthénium", "Palladium", "Osmium", "Titanium"];
@@ -41,18 +40,15 @@ function AuthScreen({users, setUsers, onLogin}) {
   };
 
   const register = async () => {
-    // Vérifications communes
     if (!f.nom||!f.prenom||!f.email||!f.password||!f.sexe||!f.phone||!f.proms) return setErr("Remplissez tous les champs obligatoires *");
     if (!f.rgpd) return setErr("Vous devez accepter les conditions d'utilisation des données.");
     
-    // Vérifications spécifiques au profil
     if (regType === 'gadz') {
        if (!f.bucque) return setErr("La Bucque est obligatoire *");
        if (!isFamsExempt(f.proms) && f.fams.length===0) return setErr(`La Fam's est obligatoire (sauf pour la Bo ${maxPromo} jusqu'au 7 Nov)`);
     }
     if (regType === 'alterns' && f.fams.length===0) return setErr("Le Chep's est obligatoire *");
 
-    // Formatage des données avant envoi
     const bucqueFinal = regType === 'gadz' ? f.bucque : "";
     const famsFinal = regType === 'bachs' ? [] : f.fams;
     const role = f.email.toLowerCase()===DEV_EMAIL ? "developer" : "user";
@@ -144,7 +140,7 @@ function AuthScreen({users, setUsers, onLogin}) {
             {mode==="register" && regType && (
               <div className="fade-in" style={{display:"flex",flexDirection:"column",gap:10}}>
                 <button onClick={() => {setRegType(null); setErr("");}} style={{background:"none",border:"none",color:S.red,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:700,textAlign:"left",marginBottom:4,padding:0}}>← Changer de profil</button>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><div><Lbl t="Nom *"/><input style={S.inp} placeholder="Ex: Dupont" value={f.nom} onChange={e=>up("nom",e.target.value)} onKeyDown={handleKeyDown}/></div><div><Lbl t="Prénom *"/><input style={S.inp} placeholder="Ex: Jean" value={f.prenom} onChange={e=>up("prenom",e.target.value)} onKeyDown={handleKeyDown}/></div></div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}><div><Lbl t="Nom *"/><input style={S.inp} placeholder="Predon" value={f.nom} onChange={e=>up("nom",e.target.value)} onKeyDown={handleKeyDown}/></div><div><Lbl t="Prénom *"/><input style={S.inp} placeholder="Robin" value={f.prenom} onChange={e=>up("prenom",e.target.value)} onKeyDown={handleKeyDown}/></div></div>
                 
                 {regType === "gadz" && (
                    <div><Lbl t="Bucque *"/><input style={S.inp} placeholder="Ki'Shot" value={f.bucque} onChange={e=>up("bucque",e.target.value)} onKeyDown={handleKeyDown}/></div>
@@ -190,7 +186,7 @@ function AuthScreen({users, setUsers, onLogin}) {
 
             {(mode==="login" || (mode==="register" && regType)) && (
                <>
-                  <div className="fade-in"><Lbl t="Email *"/><input style={S.inp} type="email" placeholder="mail perso ou arts" value={f.email} onChange={e=>up("email",e.target.value)} onKeyDown={handleKeyDown}/></div>
+                  <div className="fade-in"><Lbl t="Email *"/><input style={S.inp} type="email" placeholder="mail perso" value={f.email} onChange={e=>up("email",e.target.value)} onKeyDown={handleKeyDown}/></div>
                   <div className="fade-in">
                      <Lbl t="Mot de passe *"/>
                      <div style={{position:"relative", display:"flex", alignItems:"center"}}>
@@ -233,25 +229,30 @@ function AuthScreen({users, setUsers, onLogin}) {
   );
 }
 
-function Header({user, onAvatarClick, notifs}) {
+function Header({user, onAvatarClick, notifs, changeTab}) {
   const [showNotif, setShowNotif] = useState(false);
   
-  // 💾 Gestion locale des notifications lues
+  // 💾 Gestion locale des notifications lues basée sur un ID unique
   const [readNotifs, setReadNotifs] = useState(() => {
      try { return JSON.parse(localStorage.getItem("uai_read_notifs")) || []; } catch(e) { return []; }
   });
 
-  // Filtre les notifications pour ne garder que celles non-lues
-  const activeNotifs = notifs.filter(n => !readNotifs.includes(n.msg));
+  // Filtre les notifications via l'ID
+  const activeNotifs = notifs.filter(n => !readNotifs.includes(n.id));
 
-  const toggleNotifs = () => {
-     // Quand on REFERME la cloche, on marque tout ce qui s'affichait comme "lu"
-     if (showNotif && activeNotifs.length > 0) {
-        const updated = [...readNotifs, ...activeNotifs.map(n => n.msg)];
-        setReadNotifs(updated);
-        localStorage.setItem("uai_read_notifs", JSON.stringify(updated));
-     }
-     setShowNotif(!showNotif);
+  // Marquer une notification comme lue et rediriger vers la page correspondante
+  const handleNotifClick = (n) => {
+     const updated = [...readNotifs, n.id];
+     setReadNotifs(updated);
+     localStorage.setItem("uai_read_notifs", JSON.stringify(updated));
+     setShowNotif(false);
+     if (n.tab) changeTab(n.tab);
+  };
+
+  const markAllAsRead = () => {
+     const updated = [...readNotifs, ...activeNotifs.map(n => n.id)];
+     setReadNotifs(updated);
+     localStorage.setItem("uai_read_notifs", JSON.stringify(updated));
   };
 
   return (
@@ -265,13 +266,21 @@ function Header({user, onAvatarClick, notifs}) {
       </div>
       <div style={{display:"flex",alignItems:"center",gap:12}}>
         <div style={{position:"relative"}}>
-           <button onClick={toggleNotifs} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",padding:0}}>🔔</button>
-           {/* La pastille rouge s'affiche que si on a des activeNotifs non-lues */}
+           <button onClick={()=>setShowNotif(!showNotif)} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",padding:0}}>🔔</button>
+           {/* La pastille rouge s'affiche si on a des activeNotifs non-lues */}
            {activeNotifs.length>0 && <div style={{position:"absolute",top:-2,right:-2,width:10,height:10,background:S.red,borderRadius:"50%",border:"2px solid #0c0c0c"}}></div>}
            {showNotif && (
              <div className="fade-in" style={{position:"absolute",top:30,right:0,width:260,background:S.card,border:`1px solid ${S.cardBorder}`,borderRadius:12,padding:12,boxShadow:"0 10px 20px rgba(0,0,0,0.8)",maxHeight:300,overflowY:"auto"}}>
-               <div style={{fontSize:12,fontWeight:700,marginBottom:10,color:"white"}}>NOTIFICATIONS</div>
-               {activeNotifs.length===0?<div style={{fontSize:11,color:"#666"}}>Aucune nouvelle notification</div>:activeNotifs.map((n,i)=><div key={i} style={{fontSize:12,padding:"8px",borderBottom:"1px solid #1a1a1a",color:"#ccc"}}>{n.msg}</div>)}
+               <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10}}>
+                  <div style={{fontSize:12,fontWeight:700,color:"white"}}>NOTIFICATIONS</div>
+                  {activeNotifs.length > 0 && <button onClick={markAllAsRead} style={{background:"none", border:"none", color:S.red, fontSize:10, cursor:"pointer", textDecoration:"underline", padding:0}}>Tout effacer</button>}
+               </div>
+               {activeNotifs.length===0?<div style={{fontSize:11,color:"#666"}}>Aucune nouvelle notification</div> : activeNotifs.map((n) => (
+                  <div key={n.id} onClick={() => handleNotifClick(n)} style={{fontSize:12,padding:"8px",borderBottom:"1px solid #1a1a1a",color:"#ccc", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, borderRadius:6, transition:"0.2s"}} onMouseOver={(e)=>e.currentTarget.style.background="#1a1a1a"} onMouseOut={(e)=>e.currentTarget.style.background="transparent"}>
+                     <span>{n.msg}</span>
+                     <span style={{fontSize:10, color:"#555"}}>&gt;</span>
+                  </div>
+               ))}
              </div>
            )}
         </div>
@@ -315,7 +324,6 @@ export default function UAIApp() {
   const [teams, setTeams] = useState([]);
   const [challenges, setChallenges] = useState([]);
 
-  // States pour l'onglet Infos passés à vide
   const [partners, setPartners] = useState([]);
   const [muscuList, setMuscuList] = useState([]);
   const [inventory, setInventory] = useState([]);
@@ -460,14 +468,15 @@ export default function UAIApp() {
     setTouchStart(null);
   };
 
+  // 🔔 Logique des notifications avec identifiants uniques
   const notifs = [];
   if (user) {
     if (dDate.getMonth() === 10 && dDate.getDate() >= 15 && (!user.fams || user.fams.length === 0)) {
-       notifs.push({msg:`⚠️ Action requise : Renseigner votre Fam's dans l'onglet Compte.`});
+       notifs.push({id:"fams_missing", msg:`⚠️ Action requise : Renseigner votre Fam's dans l'onglet Compte.`, tab:"account"});
     }
     if (isDev(user)) {
        const unreadFb = feedbacks.filter(f => !f.isRead);
-       if (unreadFb.length > 0) notifs.push({msg:`🚀 Vous avez ${unreadFb.length} nouveau(x) feedback(s) !`});
+       if (unreadFb.length > 0) notifs.push({id:`fb_${unreadFb.length}`, msg:`🚀 Vous avez ${unreadFb.length} nouveau(x) feedback(s) !`, tab:"admin"});
     }
 
     const dToday = new Date(); const todayStr = dToday.toISOString().slice(0,10);
@@ -480,15 +489,15 @@ export default function UAIApp() {
        const [mh] = m.time.split(':').map(Number);
        const sportName = Sp && Sp[m.sportId] ? Sp[m.sportId].l : m.sportId;
 
-       if (m.date === todayStr && mh >= nowHour) notifs.push({msg:`📅 Match de ${sportName} aujourd'hui à ${m.time} !`});
+       if (m.date === todayStr && mh >= nowHour) notifs.push({id:`match_today_${m.id}`, msg:`📅 Match de ${sportName} aujourd'hui à ${m.time} !`, tab:"matches"});
        if ((m.date === todayStr && mh < nowHour) || m.date === yesterdayStr) {
           if (m.scoreBordels != null) {
-            if(m.scoreBordels > m.scoreOpponent) notifs.push({msg:`🏆 Victoire des Bordel's en ${sportName} (${m.scoreBordels}-${m.scoreOpponent}) !`});
-            if(m.scoreBordels < m.scoreOpponent) notifs.push({msg:`❌ Défaite des Bordel's en ${sportName} (${m.scoreBordels}-${m.scoreOpponent}).`});
+            if(m.scoreBordels > m.scoreOpponent) notifs.push({id:`match_win_${m.id}`, msg:`🏆 Victoire des Bordel's en ${sportName} (${m.scoreBordels}-${m.scoreOpponent}) !`, tab:"matches"});
+            if(m.scoreBordels < m.scoreOpponent) notifs.push({id:`match_loss_${m.id}`, msg:`❌ Défaite des Bordel's en ${sportName} (${m.scoreBordels}-${m.scoreOpponent}).`, tab:"matches"});
           } else {
              const isInBurs = bureau?.some(b => b.userId === user.id && ['zident','vizident','re','com','log','muscu','ziblec'].includes(b.role));
              const isKptn = (user.adminSports||[]).includes(m.sportId);
-             if (isInBurs || isKptn) notifs.push({msg:`📝 N'oubliez pas d'inscrire le score du match de ${sportName} !`});
+             if (isInBurs || isKptn) notifs.push({id:`match_score_${m.id}`, msg:`📝 N'oubliez pas d'inscrire le score du match de ${sportName} !`, tab:"matches"});
           }
        }
     });
@@ -505,8 +514,11 @@ export default function UAIApp() {
   return (
     <div style={{fontFamily:"'Barlow',sans-serif",background:S.bg,minHeight:"100vh",color:"white"}} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <div className="app-container">
-        <Header user={user} onAvatarClick={setViewProfileId} notifs={notifs} />
+        {/* On passe "changeTab" au Header pour la redirection des notifs */}
+        <Header user={user} onAvatarClick={setViewProfileId} notifs={notifs} changeTab={changeTab} />
+        
         {viewProfileId && <UserProfileModal uid={viewProfileId} users={users} bureau={bureau} onClose={() => setViewProfileId(null)} />}
+        
         <div key={tab} className={slideDir} style={{flex: 1, paddingBottom: 68}}>
           {tab==="planning"&&<PlanningTab events={events} setEvents={setEvents} matches={matches} setMatches={setMatches} user={user} locations={locations} setLocations={setLocations} bureau={bureau} isMobile={typeof window!=="undefined"?window.innerWidth<768:false} winH={typeof window!=="undefined"?window.innerHeight:800}/>}
           {tab==="matches"&&<MatchesTab matches={matches} setMatches={setMatches} events={events} setEvents={setEvents} user={user} locations={locations} setLocations={setLocations} bureau={bureau}/>}

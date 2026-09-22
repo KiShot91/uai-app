@@ -88,7 +88,33 @@ function AuthScreen({users, setUsers, onLogin}) {
     }
   };
 
-  const sendReset = () => { if(!resetContact) return setErr("Entrez une information valide"); setResetSent(true); setErr(""); }
+  // 🔐 NOUVEAU SYSTÈME DE MOT DE PASSE OUBLIÉ
+  const sendReset = async () => { 
+    if(!resetContact) return setErr("Entrez une information valide"); 
+    
+    const targetUser = users.find(u => u.email === resetContact || u.phone === resetContact);
+    if (!targetUser) return setErr("Aucun compte trouvé avec cet email ou numéro.");
+
+    try {
+      const resetAlert = {
+         id: Date.now(),
+         userid: targetUser.id,
+         text: `🔑 DEMANDE RESET MOT DE PASSE : ${targetUser.prenom} ${targetUser.nom} a oublié son mot de passe. Contacte-le au ${targetUser.phone} ou sur ${targetUser.email}.`,
+         time: new Date().toISOString(),
+         isread: false
+      };
+
+      const { error } = await supabase.from('feedbacks').insert([resetAlert]);
+      if (error) throw error;
+
+      setResetSent(true); 
+      setErr(""); 
+    } catch (err) {
+      console.error(err);
+      setErr("Erreur lors de l'envoi de la demande.");
+    }
+  };
+
   const handleKeyDown = (e) => { if (e.key === "Enter") { if (mode === "login") login(); else if (mode === "register" && regType) register(); else if (mode==="forgot") sendReset(); } }
 
   return (
@@ -114,8 +140,8 @@ function AuthScreen({users, setUsers, onLogin}) {
             ) : (
               <div className="fade-in" style={{textAlign:"center",padding:"24px 0"}}>
                 <div style={{fontSize:44,marginBottom:16}}>📩</div>
-                <div style={{fontFamily:"'Barlow Condensed'",fontSize:22,fontWeight:900,color:"white",marginBottom:12}}>Demande envoyée !</div>
-                <div style={{fontSize:13,color:"#666",lineHeight:1.75,marginBottom:24}}>Si le contact <span style={{color:S.red}}>{resetContact}</span> existe, un lien vous sera envoyé.</div>
+                <div style={{fontFamily:"'Barlow Condensed'",fontSize:22,fontWeight:900,color:"white",marginBottom:12}}>Alerte envoyée !</div>
+                <div style={{fontSize:13,color:"#666",lineHeight:1.75,marginBottom:24}}>Une notification a été envoyée aux administrateurs. Ils te contacteront très vite avec un nouveau mot de passe.</div>
                 <button onClick={()=>{setMode("login");setResetSent(false);setResetContact("");}} style={btnStyle()}>Retour à la connexion</button>
               </div>
             )}
@@ -232,15 +258,12 @@ function AuthScreen({users, setUsers, onLogin}) {
 function Header({user, onAvatarClick, notifs, changeTab}) {
   const [showNotif, setShowNotif] = useState(false);
   
-  // 💾 Gestion locale des notifications lues basée sur un ID unique
   const [readNotifs, setReadNotifs] = useState(() => {
      try { return JSON.parse(localStorage.getItem("uai_read_notifs")) || []; } catch(e) { return []; }
   });
 
-  // Filtre les notifications via l'ID
   const activeNotifs = notifs.filter(n => !readNotifs.includes(n.id));
 
-  // Marquer une notification comme lue et rediriger vers la page correspondante
   const handleNotifClick = (n) => {
      const updated = [...readNotifs, n.id];
      setReadNotifs(updated);
@@ -267,7 +290,6 @@ function Header({user, onAvatarClick, notifs, changeTab}) {
       <div style={{display:"flex",alignItems:"center",gap:12}}>
         <div style={{position:"relative"}}>
            <button onClick={()=>setShowNotif(!showNotif)} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",padding:0}}>🔔</button>
-           {/* La pastille rouge s'affiche si on a des activeNotifs non-lues */}
            {activeNotifs.length>0 && <div style={{position:"absolute",top:-2,right:-2,width:10,height:10,background:S.red,borderRadius:"50%",border:"2px solid #0c0c0c"}}></div>}
            {showNotif && (
              <div className="fade-in" style={{position:"absolute",top:30,right:0,width:260,background:S.card,border:`1px solid ${S.cardBorder}`,borderRadius:12,padding:12,boxShadow:"0 10px 20px rgba(0,0,0,0.8)",maxHeight:300,overflowY:"auto"}}>
@@ -344,10 +366,12 @@ export default function UAIApp() {
         const { data: dbTeams } = await supabase.from('teams').select('*');
         const { data: dbChallenges } = await supabase.from('challenges').select('*');
         const { data: dbMessages } = await supabase.from('messages').select('*');
-
         const { data: dbPartners } = await supabase.from('partners').select('*');
         const { data: dbMuscu } = await supabase.from('musculation').select('*');
         const { data: dbInv } = await supabase.from('inventory').select('*');
+        
+        // 🔄 AJOUT IMPORTANT : Fetch des Feedbacks depuis Supabase pour les alertes !
+        const { data: dbFeedbacks } = await supabase.from('feedbacks').select('*');
 
         if (dbUsers) {
           const formattedUsers = dbUsers.map(u => ({
@@ -400,6 +424,11 @@ export default function UAIApp() {
         if (dbPartners) setPartners(dbPartners);
         if (dbMuscu) setMuscuList(dbMuscu);
         if (dbInv) setInventory(dbInv.map(i => ({...i, sportId: i.sportid})));
+        
+        // 🔄 Application des Feedbacks
+        if (dbFeedbacks) {
+           setFeedbacks(dbFeedbacks.map(f => ({...f, isRead: f.isread})));
+        }
 
       } catch (error) {
         console.error("Erreur Supabase:", error);
@@ -468,7 +497,6 @@ export default function UAIApp() {
     setTouchStart(null);
   };
 
-  // 🔔 Logique des notifications avec identifiants uniques
   const notifs = [];
   if (user) {
     if (dDate.getMonth() === 10 && dDate.getDate() >= 15 && (!user.fams || user.fams.length === 0)) {
@@ -514,7 +542,6 @@ export default function UAIApp() {
   return (
     <div style={{fontFamily:"'Barlow',sans-serif",background:S.bg,minHeight:"100vh",color:"white"}} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <div className="app-container">
-        {/* On passe "changeTab" au Header pour la redirection des notifs */}
         <Header user={user} onAvatarClick={setViewProfileId} notifs={notifs} changeTab={changeTab} />
         
         {viewProfileId && <UserProfileModal uid={viewProfileId} users={users} bureau={bureau} onClose={() => setViewProfileId(null)} />}

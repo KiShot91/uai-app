@@ -38,7 +38,7 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
     }
   };
   
-  // K'Pi'T'N : Les Devs sont maintenant inclus !
+  // K'Pi'T'N
   const captains = users.filter(u => (u.adminsports || u.adminSports || []).length > 0);
   
   // 💪 GESTION MUSCULATION
@@ -88,7 +88,6 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
     }
   };
 
-  // Sécurisation de la recherche : Les Devs sont maintenant inclus
   const annuaireList = searchM 
     ? users.filter(u => [u.nom, u.prenom, u.bucque, ...(Array.isArray(u.fams)?u.fams:[u.fams])].some(v=>String(v||"").toLowerCase().includes(searchM.toLowerCase())))
     : users;
@@ -109,15 +108,19 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
               {ROLES.filter(r=>BURS_ROLE_IDS.includes(r.id)).map(role => {
                  const members = bureau.filter(m=>m.role===role.id);
                  if(!members.length) return null;
+
+                 // Sécurité anti-doublon (si inscrits deux fois dans la base)
+                 const uniqueUserIds = [...new Set(members.map(m => m.userId))];
+
                  return (
                    <div key={role.id} style={{marginBottom: 16}}>
                       <div style={{fontSize:11, color:S.red, fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:1}}>{role.label} <span style={{color:"#555",fontWeight:400}}>({role.full})</span></div>
                       <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                        {members.map(m => {
-                          const u = users.find(x=>x.id===m.userId);
+                        {uniqueUserIds.map(uid => {
+                          const u = users.find(x=>x.id===uid);
                           if(!u) return null;
                           return (
-                            <div key={m.id} style={{display:"flex",alignItems:"center",gap:12,background:"#111",padding:10,borderRadius:10,border:"1px solid #1a1a1a",cursor:"pointer"}} onClick={()=>onViewProfile(u.id)}>
+                            <div key={uid} style={{display:"flex",alignItems:"center",gap:12,background:"#111",padding:10,borderRadius:10,border:"1px solid #1a1a1a",cursor:"pointer"}} onClick={()=>onViewProfile(u.id)}>
                               <Av src={u.avatar} name={u.bucque||u.prenom} size={42} />
                               <div style={{flex:1}}>
                                 <div style={{fontSize:14,fontWeight:700}}>{u.bucque||u.prenom}</div>
@@ -134,7 +137,7 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
           )}
         </Card>
 
-        {/* K'PI'T'N */}
+        {/* K'PI'T'N - MAINTENANT GROUPÉS PAR SPORT */}
         <Card>
           <button onClick={()=>setOpen(v=>v==="kap"?null:"kap")} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:"none",border:"none",cursor:"pointer",color:"white",fontFamily:"inherit",textAlign:"left"}}>
             <div style={{display:"flex",alignItems:"center",gap:12}}><span style={{fontSize:22}}>👑</span><div><div style={{fontFamily:"'Barlow Condensed'",fontSize:17,fontWeight:800}}>K'π'T'N</div><div style={{fontSize:10,color:"#555",marginTop:1}}>Capitaines des sports</div></div></div>
@@ -143,17 +146,27 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
           {open==="kap"&&(
             <div className="fade-in" style={{borderTop:"1px solid #1f1f1f",padding:"12px 16px"}}>
               {captains.length===0&&<div style={{fontSize:13,color:"#555",textAlign:"center",padding:"12px 0"}}>Aucun capitaine renseigné.</div>}
-              <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {captains.map(u=>(
-                  <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>onViewProfile(u.id)}>
-                    <Av src={u.avatar} name={dn(u)} size={44} />
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:14,fontWeight:700}}>{dn(u)}</div>
-                      <RenderTitles u={u} bureau={bureau} />
-                    </div>
-                  </div>
-                ))}
-              </div>
+              
+              {SPORTS.filter(s=>s.id!=="general" && s.id!=="tuverras" && s.id!=="ultra").map(sport => {
+                 const sportCaps = captains.filter(u => (u.adminsports || u.adminSports || []).includes(sport.id));
+                 if(!sportCaps.length) return null;
+                 return (
+                   <div key={sport.id} style={{marginBottom: 16}}>
+                      <div style={{fontSize:11, color:S.red, fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:1}}>{sport.l}</div>
+                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                        {sportCaps.map(u => (
+                          <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,background:"#111",padding:10,borderRadius:10,border:"1px solid #1a1a1a",cursor:"pointer"}} onClick={()=>onViewProfile(u.id)}>
+                            <Av src={u.avatar} name={dn(u)} size={42} />
+                            <div style={{flex:1}}>
+                              <div style={{fontSize:14,fontWeight:700}}>{dn(u)}</div>
+                              <RenderTitles u={u} bureau={bureau} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                   </div>
+                 )
+              })}
             </div>
           )}
         </Card>
@@ -335,7 +348,6 @@ export default function InfoTab({bureau, users, user, partners, setPartners, mus
            <div style={{padding:20, maxWidth:800, margin:"0 auto"}}>
              <div style={{fontFamily:"'Barlow Condensed'",fontSize:36,fontWeight:900,color:S.red,lineHeight:1.1,marginBottom:24}}>{SANTE_DATA[mod].title}</div>
              
-             {/* Special render pour Blessures */}
              {mod === "blessures" ? (
                <div style={{display:"flex", flexDirection:"column", gap:20}}>
                  <div style={{background:"#1a0808", border:"1px solid #DC262644", borderRadius:12, padding:16}}>

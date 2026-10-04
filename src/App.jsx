@@ -45,7 +45,8 @@ function AuthScreen({users, setUsers, onLogin}) {
     
     if (regType === 'gadz') {
        if (!f.bucque) return setErr("La Bucque est obligatoire *");
-       if (!isFamsExempt(f.proms) && f.fams.length===0) return setErr(`La Fam's est obligatoire (sauf pour la Bo ${maxPromo} jusqu'au 7 Nov)`);
+       // MESSAGE D'ERREUR RACCOURCI POUR ÉVITER LE SPOIL :
+       if (f.fams.length===0) return setErr("La Fam's est obligatoire");
     }
     if (regType === 'alterns' && f.fams.length===0) return setErr("Le Chep's est obligatoire *");
 
@@ -88,18 +89,38 @@ function AuthScreen({users, setUsers, onLogin}) {
     }
   };
 
-  // 🔐 NOUVEAU SYSTÈME DE MOT DE PASSE OUBLIÉ
+  // 🔐 SYSTÈME DE MOT DE PASSE INTELLIGENT
   const sendReset = async () => { 
     if(!resetContact) return setErr("Entrez une information valide"); 
     
-    const targetUser = users.find(u => u.email === resetContact || u.phone === resetContact);
-    if (!targetUser) return setErr("Aucun compte trouvé avec cet email ou numéro.");
+    const q = resetContact.toLowerCase().trim();
+    
+    // On cherche l'utilisateur via différentes correspondances
+    const matchingUsers = users.filter(u => {
+       const fullName = `${u.prenom} ${u.nom}`.toLowerCase();
+       const reverseName = `${u.nom} ${u.prenom}`.toLowerCase();
+       return u.email?.toLowerCase() === q || 
+              u.phone?.replace(/\s/g, '') === q.replace(/\s/g, '') || 
+              fullName === q || 
+              reverseName === q ||
+              (u.bucque && u.bucque.toLowerCase() === q) ||
+              u.prenom?.toLowerCase() === q ||
+              u.nom?.toLowerCase() === q;
+    });
+
+    if (matchingUsers.length === 0) return setErr("Aucun compte trouvé avec ces infos.");
+    if (matchingUsers.length > 1) return setErr("Plusieurs comptes trouvés. Précisez votre nom et prénom.");
+
+    const targetUser = matchingUsers[0];
 
     try {
+      // LE MESSAGE PRÉ-GÉNÉRÉ QUE TU POURRAS COPIER-COLLER
+      const textToCopy = `Salut ${targetUser.bucque || targetUser.prenom}, ton identifiant est "${targetUser.email}" et ton mot de passe est "${targetUser.password}".`;
+      
       const resetAlert = {
          id: Date.now(),
          userid: targetUser.id,
-         text: `🔑 DEMANDE RESET MOT DE PASSE : ${targetUser.prenom} ${targetUser.nom} a oublié son mot de passe. Contacte-le au ${targetUser.phone} ou sur ${targetUser.email}.`,
+         text: `🔑 DEMANDE RESET MDP : ${targetUser.prenom} ${targetUser.nom} a oublié ses accès.\n\nÀ copier/coller pour lui répondre :\n${textToCopy}`,
          time: new Date().toISOString(),
          isread: false
       };
@@ -133,7 +154,7 @@ function AuthScreen({users, setUsers, onLogin}) {
             {!resetSent ? (
               <div className="fade-in" style={{display:"flex",flexDirection:"column",gap:12}}>
                 <div style={{fontFamily:"'Barlow Condensed'",fontSize:22,fontWeight:900,color:"white",marginBottom:4}}>Mot de passe oublié</div>
-                <div><Lbl t="Email ou Numéro de téléphone"/><input style={S.inp} placeholder="06 XX XX XX XX ou email" value={resetContact} onChange={e=>{setResetContact(e.target.value);setErr("");}} onKeyDown={handleKeyDown} /></div>
+                <div><Lbl t="Email, téléphone, nom ou bucque..."/><input style={S.inp} placeholder="Qui êtes-vous ?" value={resetContact} onChange={e=>{setResetContact(e.target.value);setErr("");}} onKeyDown={handleKeyDown} /></div>
                 {err && <div style={{color:"#EF4444",fontSize:13,textAlign:"center",padding:"6px 12px",background:"#EF444411",borderRadius:8}}>{err}</div>}
                 <button onClick={sendReset} style={{...btnStyle(),marginTop:4}}>Réinitialiser</button>
               </div>
@@ -157,7 +178,8 @@ function AuthScreen({users, setUsers, onLogin}) {
             {mode==="register" && !regType && (
                <div className="fade-in" style={{display:"flex", flexDirection:"column", gap:10, marginTop:10}}>
                   <div style={{color:"#aaa", textAlign:"center", marginBottom:4, fontSize:13, fontWeight:600, textTransform:"uppercase", letterSpacing:1}}>Sélectionnez votre profil</div>
-                  <button onClick={() => { setRegType("gadz"); setF(p=>({...p, proms:String(maxPromo)})); setErr(""); }} style={{...btnStyle("#1a1a1a", "white"), padding:"14px", border:"1px solid #333", fontSize:16}}>Gadz'Art</button>
+                  {/* MODIF PGE ICI */}
+                  <button onClick={() => { setRegType("gadz"); setF(p=>({...p, proms:String(maxPromo)})); setErr(""); }} style={{...btnStyle("#1a1a1a", "white"), padding:"14px", border:"1px solid #333", fontSize:16}}>PGE</button>
                   <button onClick={() => { setRegType("alterns"); setF(p=>({...p, proms:""})); setErr(""); }} style={{...btnStyle("#1a1a1a", "white"), padding:"14px", border:"1px solid #333", fontSize:16}}>Altern's</button>
                   <button onClick={() => { setRegType("bachs"); setF(p=>({...p, proms:""})); setErr(""); }} style={{...btnStyle("#1a1a1a", "white"), padding:"14px", border:"1px solid #333", fontSize:16}}>Bachs</button>
                </div>
@@ -186,7 +208,8 @@ function AuthScreen({users, setUsers, onLogin}) {
                 </div>
                 
                 <div style={{display:"flex", gap:10, alignItems:"flex-start"}}>
-                   {regType === "gadz" && <div style={{flex:1}}><Lbl t={`Fam's${isFamsExempt(f.proms)?" (Optionnel)":" *"}`}/><FamsSelect value={f.fams} onChange={v=>up("fams",v)} /></div>}
+                   {/* LABEL FAM'S OBLIGATOIRE MIS À JOUR */}
+                   {regType === "gadz" && <div style={{flex:1}}><Lbl t="Fam's *"/><FamsSelect value={f.fams} onChange={v=>up("fams",v)} /></div>}
                    {regType === "alterns" && (
                       <div style={{flex:1}}>
                          <Lbl t="Chep's *"/>
@@ -369,8 +392,6 @@ export default function UAIApp() {
         const { data: dbPartners } = await supabase.from('partners').select('*');
         const { data: dbMuscu } = await supabase.from('musculation').select('*');
         const { data: dbInv } = await supabase.from('inventory').select('*');
-        
-        // 🔄 AJOUT IMPORTANT : Fetch des Feedbacks depuis Supabase pour les alertes !
         const { data: dbFeedbacks } = await supabase.from('feedbacks').select('*');
 
         if (dbUsers) {
@@ -425,7 +446,6 @@ export default function UAIApp() {
         if (dbMuscu) setMuscuList(dbMuscu);
         if (dbInv) setInventory(dbInv.map(i => ({...i, sportId: i.sportid})));
         
-        // 🔄 Application des Feedbacks
         if (dbFeedbacks) {
            setFeedbacks(dbFeedbacks.map(f => ({...f, isRead: f.isread})));
         }

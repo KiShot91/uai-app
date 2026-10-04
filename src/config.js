@@ -53,11 +53,11 @@ export const ROLES = [
   {id:"zident", label:"ZiUAI", full:"Président"}, {id:"vizident", label:"ViZiUAI", full:"Vice-Président"},
   {id:"re", label:"RE UAI", full:"Relations Extérieures"}, {id:"com", label:"COM UAI", full:"Communication"},
   {id:"log", label:"LOG UAI", full:"Logistique"}, {id:"muscu", label:"ZiMuscu", full:"Musculation"},
-  {id: 'harpags', label: "Harpag's", full: "Responsable Harpag's"},
+  {id: 'harpags', label: "Harpag's UAI", full: "Responsable Argent"},
   {id:"ziblec", label:"Zibl'&'C", full:"Responsable Blessures & Soins"}
 ];
 // 🛡️ FIX : Zibl'&'C retiré du Bureau, il passera automatiquement dans "Autres Rôles" en rouge !
-export const BURS_ROLE_IDS = ["zident", "vizident", "re", "com", "log", "muscu"];
+export const BURS_ROLE_IDS = ["zident", "vizident", "re", "com", "log", "harpags", "muscu"];
 export const DEV_EMAIL = "robin.predon@gmail.com";
 
 export const FAMS_OPTIONS = Array.from({length:201}, (_,i) => {

@@ -4,13 +4,14 @@ import { isDev, isBurs, readFile, dn, fmtDate, S, btnStyle, SPORTS, Sp } from ".
 import { SecTitle, AddBtn, Card, Tag, Lbl, Av } from "../components/Shared";
 
 // 💬 Composant local de commentaires pour les News (lié à Supabase)
-function NewsComments({ item, setNews, user }) {
+function NewsComments({ item, setNews, user, onViewProfile, users }) {
   const [txt, setTxt] = useState("");
   const comments = item.comments || [];
 
   const add = async () => {
     if(!txt.trim()) return;
-    const nc = { id: Date.now(), userId: user.id, userName: dn(user), text: txt, time: new Date().toISOString() };
+    const userAvatar = user.avatar || null;
+    const nc = { id: Date.now(), userId: user.id, userName: dn(user), userAvatar: userAvatar, text: txt, time: new Date().toISOString() };
     const newComments = [...comments, nc];
     try {
        const {error} = await supabase.from('news').update({comments: newComments}).eq('id', item.id);
@@ -23,15 +24,25 @@ function NewsComments({ item, setNews, user }) {
   return (
     <div style={{borderTop:"1px solid #1a1a1a",padding:"14px 0 0", marginTop:20}}>
       <div style={{fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>COMMENTAIRES - {comments.length}</div>
-      {comments.map(c => (
-        <div key={c.id} style={{marginBottom:12,display:"flex",gap:10}}>
-          <Av name={c.userName} size={30} color={S.red} />
-          <div style={{flex:1}}>
-            <div style={{display:"flex",gap:8,marginBottom:3,alignItems:"center"}}><span style={{fontSize:12,fontWeight:700}}>{c.userName}</span><span style={{fontSize:10,color:"#333"}}>{new Date(c.time).toLocaleDateString("fr-FR",{day:"numeric",month:"short"})}</span></div>
-            <div style={{fontSize:13,color:"#aaa",lineHeight:1.6,marginBottom:6}}>{c.text}</div>
-          </div>
-        </div>
-      ))}
+      {comments.map(c => {
+         const commenter = users ? users.find(u => u.id === c.userId) : null;
+         const avatarUrl = commenter?.avatar || c.userAvatar;
+         
+         return (
+            <div key={c.id} style={{marginBottom:12,display:"flex",gap:10}}>
+              <div onClick={() => onViewProfile && onViewProfile(c.userId)} style={{cursor: onViewProfile ? "pointer" : "default"}}>
+                 <Av src={avatarUrl} name={c.userName} size={30} color={S.red} />
+              </div>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",gap:8,marginBottom:3,alignItems:"center"}}>
+                   <span onClick={() => onViewProfile && onViewProfile(c.userId)} style={{fontSize:12,fontWeight:700, cursor: onViewProfile ? "pointer" : "default"}}>{c.userName}</span>
+                   <span style={{fontSize:10,color:"#333"}}>{new Date(c.time).toLocaleDateString("fr-FR",{day:"numeric",month:"short"})}</span>
+                </div>
+                <div style={{fontSize:13,color:"#aaa",lineHeight:1.6,marginBottom:6}}>{c.text}</div>
+              </div>
+            </div>
+         );
+      })}
       <div style={{display:"flex",gap:8,marginTop:10}}>
         <input style={{...S.inp,flex:1,padding:"9px 12px",fontSize:13}} placeholder="Commenter..." value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} />
         <button onClick={add} style={{background:S.red, color:"white", border:"none", borderRadius:10, padding:"9px 14px", cursor:"pointer", fontSize:13, fontWeight:700, flexShrink:0}}>Envoyer</button>
@@ -40,11 +51,14 @@ function NewsComments({ item, setNews, user }) {
   );
 }
 
-function NewsDetail({n, user, setNews, onClose, bureau, toggleLike, delN}) {
+function NewsDetail({n, user, setNews, onClose, bureau, toggleLike, delN, onViewProfile, users}) {
   const liked = Array.isArray(n.likedBy) && n.likedBy.includes(user.id);
   const sp = Sp[n.sportId] || {l: n.sportId};
   const photos = n.photos||[];
   const [idx, setIdx] = useState(0);
+  
+  const author = users ? users.find(u => u.id === n.authorId) : null;
+  const authorAvatar = author?.avatar;
 
   return (
     <div className="fade-in" style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:S.bg,zIndex:200,overflowY:"auto",paddingBottom:80}}>
@@ -77,18 +91,22 @@ function NewsDetail({n, user, setNews, onClose, bureau, toggleLike, delN}) {
         <div style={{fontSize:15,color:"#ccc",lineHeight:1.8,marginBottom:20,whiteSpace:"pre-wrap"}}>{n.content}</div>
         
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0",borderTop:"1px solid #1e1e1e",borderBottom:"1px solid #1e1e1e"}}>
-          <span style={{fontSize:12,color:"#555"}}>Par {n.authorName}</span>
+          <div onClick={() => onViewProfile && onViewProfile(n.authorId)} style={{display:"flex", alignItems:"center", gap:10, cursor: onViewProfile ? "pointer" : "default"}}>
+             <Av src={authorAvatar} name={n.authorName} size={32} />
+             <span style={{fontSize:13,color:"#aaa", fontWeight:700}}>{n.authorName}</span>
+          </div>
           <button onClick={() => toggleLike(n)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:liked?S.red:"#555", display:"flex", alignItems:"center", gap:6}}>
             {liked?"❤️":"🤍"} <span style={{fontWeight:700,fontSize:14}}>{n.likes||0}</span>
           </button>
         </div>
-        <NewsComments item={n} setNews={setNews} user={user} />
+        <NewsComments item={n} setNews={setNews} user={user} onViewProfile={onViewProfile} users={users} />
       </div>
     </div>
   );
 }
 
-export default function NewsTab({news, setNews, user, bureau}) {
+// Ajout de onViewProfile et users dans les props
+export default function NewsTab({news, setNews, user, bureau, onViewProfile, users}) {
   const [showAdd, setShowAdd] = useState(false);
   const [editNId, setEditNId] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -103,7 +121,6 @@ export default function NewsTab({news, setNews, user, bureau}) {
     for (let i=0;i<total;i++) readFile(files[i], d => { results.push(d); if(++done===total) setForm(p=>({...p,photos:[...p.photos,...results]})); });
   };
 
-  // ❤️ GESTION DES LIKES (Supabase)
   const toggleLike = async (n) => {
     const isL = (n.likedBy || []).includes(user.id);
     const newLikedBy = isL ? (n.likedBy||[]).filter(x=>x!==user.id) : [...(n.likedBy||[]), user.id];
@@ -115,7 +132,6 @@ export default function NewsTab({news, setNews, user, bureau}) {
     } catch (err) { console.error(err); }
   };
 
-  // 📝 SAUVEGARDE & MODIFICATION (Supabase)
   const handleSaveN = async () => {
     if (!form.title||!form.content||!canAdd) return;
     const isEdit = !!editNId;
@@ -144,10 +160,12 @@ export default function NewsTab({news, setNews, user, bureau}) {
         setNews(p => [{...form, id:nId, date:today, authorId:user.id, authorName:dn(user), likes:0, likedBy:[], comments:[]}, ...p]);
       }
       setShowAdd(false); setEditNId(null);
-    } catch(e) { console.error(e); alert("Erreur lors de la sauvegarde."); }
+    } catch(e) { 
+       console.error("Erreur de sauvegarde actus:", e); 
+       alert(`Erreur lors de la sauvegarde: ${e.message || "Problème serveur"}`); 
+    }
   };
 
-  // 🗑️ SUPPRESSION (Supabase)
   const delN = async (id) => { 
     if(confirm("Supprimer l'actu ?")) {
       try {
@@ -161,16 +179,18 @@ export default function NewsTab({news, setNews, user, bureau}) {
 
   if (selected) {
     const n = news.find(x=>x.id===selected);
-    if(n) return <NewsDetail n={n} user={user} setNews={setNews} onClose={()=>setSelected(null)} bureau={bureau} toggleLike={toggleLike} delN={delN} />;
+    if(n) return <NewsDetail n={n} user={user} setNews={setNews} onClose={()=>setSelected(null)} bureau={bureau} toggleLike={toggleLike} delN={delN} onViewProfile={onViewProfile} users={users} />;
     else setSelected(null);
   }
 
-  // Tri des actus du plus récent au plus ancien
   const sortedNews = [...news].sort((a,b) => new Date(b.date) - new Date(a.date));
 
   return (
     <div className="fade-in">
-      <SecTitle title="Actualités" action={canAdd && <AddBtn label="+ Publier" onClick={()=>{setForm({sportId:"general",title:"",content:"",photos:[]});setEditNId(null);setShowAdd(v=>!v);}} />} />
+      <div style={{position:"sticky", top: 0, background: S.bg, zIndex: 10, paddingBottom: 10}}>
+         <SecTitle title="Actualités" action={canAdd && <AddBtn label="+ Publier" onClick={()=>{setForm({sportId:"general",title:"",content:"",photos:[]});setEditNId(null);setShowAdd(v=>!v);}} />} />
+      </div>
+      
       {showAdd && (
         <div style={{margin:"0 20px 16px",maxWidth:800,margin:"0 auto 16px",background:"#111",borderRadius:14,padding:18,border:`1px solid ${S.redBorder}`}}>
           <div style={{fontFamily:"'Barlow Condensed'",fontSize:17,fontWeight:900,color:S.red,letterSpacing:2,marginBottom:16}}>{editNId?"MODIFIER L'ACTU":"NOUVELLE ACTU"}</div>
@@ -206,6 +226,10 @@ export default function NewsTab({news, setNews, user, bureau}) {
           const liked = Array.isArray(n.likedBy) && n.likedBy.includes(user.id);
           const sp = Sp[n.sportId] || {l: n.sportId};
           const hasPh = (n.photos||[]).length > 0;
+          
+          const author = users ? users.find(u => u.id === n.authorId) : null;
+          const authorAvatar = author?.avatar;
+
           return (
             <Card key={n.id} onClick={()=>setSelected(n.id)} style={{cursor:"pointer", position:"relative"}}>
               {canAdd && <button onClick={(e)=>{e.stopPropagation();setForm({sportId:n.sportId,title:n.title,content:n.content,photos:[...n.photos||[]]});setEditNId(n.id);setShowAdd(true);window.scrollTo(0,0);}} style={{position:"absolute",top:10,right:10,background:"rgba(0,0,0,0.5)",border:"1px solid #333",borderRadius:"50%",width:30,height:30,color:"white",fontSize:14,cursor:"pointer",zIndex:5}}>✏️</button>}
@@ -221,7 +245,10 @@ export default function NewsTab({news, setNews, user, bureau}) {
                 <div style={{fontSize:13,color:"#bbb",lineHeight:1.6,marginBottom:12, maxHeight:"3.2em", overflow:"hidden", textOverflow:"ellipsis"}}>{n.content}</div>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",borderTop:"1px solid #1f1f1f",paddingTop:10}}>
                   <div style={{display:"flex",gap:14,alignItems:"center"}}>
-                     <span style={{fontSize:12,color:"#555"}}>Par {n.authorName}</span>
+                     <div onClick={(e) => { e.stopPropagation(); onViewProfile && onViewProfile(n.authorId); }} style={{display:"flex", alignItems:"center", gap:8, cursor: onViewProfile ? "pointer" : "default"}}>
+                        <Av src={authorAvatar} name={n.authorName} size={24} />
+                        <span style={{fontSize:12,color:"#ccc", fontWeight:600}}>{n.authorName}</span>
+                     </div>
                      <span style={{fontSize:12,color:"#555"}}>{"💬 "+(n.comments?.length||0)}</span>
                   </div>
                   <button onClick={(e) => { e.stopPropagation(); toggleLike(n); }} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:liked?S.red:"#555", display:"flex", alignItems:"center", gap:6}}>

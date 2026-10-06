@@ -337,7 +337,7 @@ function Header({user, onAvatarClick, notifs, changeTab}) {
 
 function BottomNav({active, onChange, user}) {
   let tabs = [{id:"planning",l:"Planning",ic:"📅"},{id:"matches",l:"Matchs",ic:"🏆"},{id:"news",l:"Actus",ic:"📰"},{id:"info",l:"Infos",ic:"ℹ️"},{id:"groupes",l:"Groupes",ic:"🛡️"},{id:"account",l:"Compte",ic:"👤"}];
-  if(isDev(user)) tabs.push({id:"admin",l:"Admin",ic:"⚙️️"});
+  if(isDev(user)) tabs.push({id:"admin",l:"Admin",ic:"⚙"});
 
   return (
     <div className="no-scrollbar" style={{position:"fixed",bottom:0,left:0,right:0,background:"#0a0a0a",borderTop:"1px solid #1a1a1a",display:"flex",zIndex:100,height:62,overflowX:"auto"}}>
@@ -568,8 +568,10 @@ export default function UAIApp() {
         
         <div key={tab} className={slideDir} style={{flex: 1, paddingBottom: 68}}>
           {tab==="planning"&&<PlanningTab events={events} setEvents={setEvents} matches={matches} setMatches={setMatches} user={user} locations={locations} setLocations={setLocations} bureau={bureau} isMobile={typeof window!=="undefined"?window.innerWidth<768:false} winH={typeof window!=="undefined"?window.innerHeight:800}/>}
-          {tab==="matches"&&<MatchesTab matches={matches} setMatches={setMatches} events={events} setEvents={setEvents} user={user} locations={locations} setLocations={setLocations} bureau={bureau}/>}
-          {tab==="news"&&<NewsTab news={news} setNews={setNews} user={user} bureau={bureau}/>}
+          
+          {/* C'est ici que j'ai injecté les props onViewProfile={setViewProfileId} users={users} */}
+          {tab==="matches"&&<MatchesTab matches={matches} setMatches={setMatches} events={events} setEvents={setEvents} user={user} locations={locations} setLocations={setLocations} bureau={bureau} onViewProfile={setViewProfileId} users={users}/>}
+          {tab==="news"&&<NewsTab news={news} setNews={setNews} user={user} bureau={bureau} onViewProfile={setViewProfileId} users={users}/>}
           
           {tab==="info"&&<InfoTab bureau={bureau} users={users} user={user} partners={partners} setPartners={setPartners} muscuList={muscuList} setMuscuList={setMuscuList} inventory={inventory} setInventory={setInventory} onViewProfile={setViewProfileId} />}
           

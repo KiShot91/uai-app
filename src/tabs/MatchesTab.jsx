@@ -6,13 +6,15 @@ import { Card, SecTitle, AddBtn, Lbl, LocationSelect, Tag, LocationLink, Av } fr
 const MTC = {Championnat:"#DC2626",Finale:"#F59E0B",Coupe:"#8B5CF6",Amical:"#3B82F6",Tournoi:"#10B981"};
 
 // 💬 Composant local de commentaires lié à Supabase
-function MatchComments({ match, setMatches, user }) {
+function MatchComments({ match, setMatches, user, onViewProfile, users }) {
   const [txt, setTxt] = useState("");
   const comments = match.comments || [];
   
   const add = async () => { 
     if(!txt.trim()) return;
-    const nc = { id: Date.now(), userId: user.id, userName: dn(user), text: txt, time: new Date().toISOString() };
+    // On ajoute explicitement la photo de profil (avatar) s'il y en a une, sinon null
+    const userAvatar = user.avatar || null;
+    const nc = { id: Date.now(), userId: user.id, userName: dn(user), userAvatar: userAvatar, text: txt, time: new Date().toISOString() };
     const newComments = [...comments, nc];
     try {
        const {error} = await supabase.from('matches').update({comments: newComments}).eq('id', match.id);
@@ -25,15 +27,27 @@ function MatchComments({ match, setMatches, user }) {
   return (
     <div style={{borderTop:"1px solid #1a1a1a",padding:"14px 16px", background:"#0c0c0c"}}>
       <div style={{fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>COMMENTAIRES - {comments.length}</div>
-      {comments.map(c => (
-        <div key={c.id} style={{marginBottom:12,display:"flex",gap:10}}>
-          <Av name={c.userName} size={30} color={S.red} />
-          <div style={{flex:1}}>
-            <div style={{display:"flex",gap:8,marginBottom:3,alignItems:"center"}}><span style={{fontSize:12,fontWeight:700}}>{c.userName}</span><span style={{fontSize:10,color:"#333"}}>{new Date(c.time).toLocaleDateString("fr-FR",{day:"numeric",month:"short"})}</span></div>
-            <div style={{fontSize:13,color:"#aaa",lineHeight:1.6,marginBottom:6}}>{c.text}</div>
-          </div>
-        </div>
-      ))}
+      {comments.map(c => {
+         // Essayer de récupérer la photo la plus récente de l'utilisateur s'il est dans la liste "users"
+         const commenter = users ? users.find(u => u.id === c.userId) : null;
+         const avatarUrl = commenter?.avatar || c.userAvatar;
+         
+         return (
+            <div key={c.id} style={{marginBottom:12,display:"flex",gap:10}}>
+              {/* Photo cliquable pour voir le profil */}
+              <div onClick={() => onViewProfile && onViewProfile(c.userId)} style={{cursor: onViewProfile ? "pointer" : "default"}}>
+                 <Av src={avatarUrl} name={c.userName} size={30} color={S.red} />
+              </div>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",gap:8,marginBottom:3,alignItems:"center"}}>
+                   <span onClick={() => onViewProfile && onViewProfile(c.userId)} style={{fontSize:12,fontWeight:700, cursor: onViewProfile ? "pointer" : "default"}}>{c.userName}</span>
+                   <span style={{fontSize:10,color:"#333"}}>{new Date(c.time).toLocaleDateString("fr-FR",{day:"numeric",month:"short"})}</span>
+                </div>
+                <div style={{fontSize:13,color:"#aaa",lineHeight:1.6,marginBottom:6}}>{c.text}</div>
+              </div>
+            </div>
+         );
+      })}
       <div style={{display:"flex",gap:8,marginTop:10}}>
         <input style={{...S.inp,flex:1,padding:"9px 12px",fontSize:13}} placeholder="Commenter..." value={txt} onChange={e=>setTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} />
         <button onClick={add} style={{background:S.red, color:"white", border:"none", borderRadius:10, padding:"9px 14px", cursor:"pointer", fontSize:13, fontWeight:700, flexShrink:0}}>Envoyer</button>
@@ -42,7 +56,8 @@ function MatchComments({ match, setMatches, user }) {
   );
 }
 
-export default function MatchesTab({matches, setMatches, events, setEvents, user, locations, setLocations, bureau}) {
+// J'ai ajouté `onViewProfile` et `users` dans les props pour qu'on puisse les passer aux commentaires
+export default function MatchesTab({matches, setMatches, events, setEvents, user, locations, setLocations, bureau, onViewProfile, users}) {
   const [showAdd, setShowAdd] = useState(false);
   const [editMId, setEditMId] = useState(null);
   const [form, setForm] = useState({sportId:"pitate",opponent:"",date:"",time:"",location:"",type:"Amical",home:true,scoreBordels:"",scoreOpponent:"", isFums:false});
@@ -57,17 +72,13 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
   
   const now = new Date();
   
-  // ⏱️ NOUVELLE LOGIQUE : 1H30 après ou Score défini
   const matchesWithTimeStatus = safeMatches.map(m => {
      let isPast = false;
      
-     // S'il y a un score renseigné, c'est forcément passé
      if (m.scoreBordels != null && m.scoreBordels !== "") {
          isPast = true;
      } else if (m.date) {
-        // On combine la date et l'heure
         const matchDateTime = new Date(`${m.date}T${m.time || "23:59"}:00`);
-        // On rajoute 1h30 (90 minutes * 60000 ms)
         const matchEndDateTime = new Date(matchDateTime.getTime() + 90 * 60000);
         isPast = now > matchEndDateTime;
      }
@@ -90,7 +101,6 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
     }
   }, []);
 
-  // 🌍 AJOUT DE LIEU
   const saveNewLocation = async () => {
     if(!locForm.name.trim() || !locForm.address.trim()) return alert("Nom et adresse obligatoires !");
     const locId = `loc_${Date.now()}`;
@@ -105,7 +115,6 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
     } catch(err) { console.error(err); alert("Erreur lors de l'ajout du lieu."); }
   };
 
-  // 🎯 SYNCHRONISATION MATCH -> SUPABASE & PLANNING
   const handleSaveM = async () => {
     if (!form.opponent||!form.date||!form.time||!form.location||!canEdit(user,form.sportId,bureau)) return;
     const sB = form.scoreBordels === "" ? null : Number(form.scoreBordels);
@@ -231,7 +240,7 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
     const tc = MTC[m.type] || "#666";
     const liked = Array.isArray(m.likedBy) && m.likedBy.includes(user.id);
     const isAd = canEdit(user, m.sportId, bureau);
-    const isFums = m.isfums || m.isFums; // Récupère le booléen Fum's
+    const isFums = m.isfums || m.isFums; 
     
     let bgGrad = "linear-gradient(135deg,#1a0808,#141414)"; 
     let resColor = S.red; 
@@ -295,7 +304,7 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
               </button>
             </div>
           </div>
-          <MatchComments match={m} setMatches={setMatches} user={user} />
+          <MatchComments match={m} setMatches={setMatches} user={user} onViewProfile={onViewProfile} users={users} />
         </Card>
       </div>
     );
@@ -303,7 +312,10 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
 
   return (
     <div className="fade-in">
-      <SecTitle title="Matchs" action={canAdd&&<AddBtn label="+" onClick={()=>{setForm({sportId:"pitate",opponent:"",date:"",time:"",location:"",type:"Amical",home:true,scoreBordels:"",scoreOpponent:"", isFums:false});setEditMId(null);setShowAddLoc(false);setShowAdd(v=>!v);}}/>}/>
+      {/* On rend la barre de titre sticky (collante en haut) pour toujours voir le bouton "+" */}
+      <div style={{position:"sticky", top: 0, background: S.bg, zIndex: 10, paddingBottom: 10}}>
+         <SecTitle title="Matchs" action={canAdd&&<AddBtn label="+" onClick={()=>{setForm({sportId:"pitate",opponent:"",date:"",time:"",location:"",type:"Amical",home:true,scoreBordels:"",scoreOpponent:"", isFums:false});setEditMId(null);setShowAddLoc(false);setShowAdd(v=>!v);}}/>}/>
+      </div>
       
       {showAdd&&(
         <div style={{margin:"0 20px 14px",maxWidth:800,margin:"0 auto 16px",background:"#111",borderRadius:14,padding:18,border:`1px solid ${S.redBorder}`}}>
@@ -349,27 +361,4 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
              </div>
           </div>
 
-          <div style={{display:"flex",gap:10}}>
-             <button onClick={()=>{setShowAdd(false); setEditMId(null); setShowAddLoc(false);}} style={{flex:1,...btnStyle("#1c1c1c","#888"),border:"1px solid #2a2a2a"}}>Annuler</button>
-             {editMId && <button onClick={()=>{delM(editMId);setShowAdd(false);setEditMId(null); setShowAddLoc(false);}} style={{flex:1,...btnStyle("#1a0505","#EF4444"),border:`1px solid ${S.redBorder}`}}>Supprimer</button>}
-             <button onClick={handleSaveM} style={{flex:2,...btnStyle()}}>Enregistrer</button>
-          </div>
-        </div>
-      )}
-
-      <div style={{padding:"0 20px", maxWidth: 800, margin:"0 auto"}}>
-        {pastMatches.length === 0 && <div style={{textAlign:"center", color:"#333", fontSize:12, margin:"20px 0"}}>Aucun historique.</div>}
-        
-        {pastMatches.map(m => renderMatch(m))}
-        
-        <div ref={todayRef} style={{display:"flex", justifyContent:"space-between", margin:"40px 0", borderBottom:`2px dashed ${S.red}`, position:"relative", zIndex:0}}>
-           <span style={{background:S.bg, padding:"0 14px", color:S.red, fontWeight:900, fontFamily:"'Barlow Condensed'", fontSize:18, letterSpacing:2, position:"relative", top:12}}>▼ À VENIR</span>
-           <span style={{background:S.bg, padding:"0 14px", color:S.red, fontWeight:900, fontFamily:"'Barlow Condensed'", fontSize:18, letterSpacing:2, position:"relative", top:12}}>PASSÉ ▲</span>
-        </div>
-        
-        {futureMatches.length === 0 && <div style={{textAlign:"center", color:"#333", fontSize:12, margin:"20px 0"}}>Aucun match à venir.</div>}
-        {futureMatches.map(m => renderMatch(m))}
-      </div>
-    </div>
-  );
-}
+          <div style={{display:"flex",gap:

@@ -45,8 +45,8 @@ function AuthScreen({users, setUsers, onLogin}) {
     
     if (regType === 'gadz') {
        if (!f.bucque) return setErr("La Bucque est obligatoire *");
-       // MESSAGE D'ERREUR RACCOURCI POUR ÉVITER LE SPOIL :
-       if (f.fams.length===0) return setErr("La Fam's est obligatoire");
+       // ICI LA MODIFICATION : On vérifie l'exemption, mais le message reste générique
+       if (!isFamsExempt(f.proms) && f.fams.length===0) return setErr("La Fam's est obligatoire");
     }
     if (regType === 'alterns' && f.fams.length===0) return setErr("Le Chep's est obligatoire *");
 
@@ -209,7 +209,7 @@ function AuthScreen({users, setUsers, onLogin}) {
                 
                 <div style={{display:"flex", gap:10, alignItems:"flex-start"}}>
                    {/* LABEL FAM'S OBLIGATOIRE MIS À JOUR */}
-                   {regType === "gadz" && <div style={{flex:1}}><Lbl t="Fam's *"/><FamsSelect value={f.fams} onChange={v=>up("fams",v)} /></div>}
+                   {regType === "gadz" && <div style={{flex:1}}><Lbl t={`Fam's${isFamsExempt(f.proms)?" (Optionnel)":" *"}`}/><FamsSelect value={f.fams} onChange={v=>up("fams",v)} /></div>}
                    {regType === "alterns" && (
                       <div style={{flex:1}}>
                          <Lbl t="Chep's *"/>
@@ -337,7 +337,7 @@ function Header({user, onAvatarClick, notifs, changeTab}) {
 
 function BottomNav({active, onChange, user}) {
   let tabs = [{id:"planning",l:"Planning",ic:"📅"},{id:"matches",l:"Matchs",ic:"🏆"},{id:"news",l:"Actus",ic:"📰"},{id:"info",l:"Infos",ic:"ℹ️"},{id:"groupes",l:"Groupes",ic:"🛡️"},{id:"account",l:"Compte",ic:"👤"}];
-  if(isDev(user)) tabs.push({id:"admin",l:"Admin",ic:"⚙️"});
+  if(isDev(user)) tabs.push({id:"admin",l:"Admin",ic:"⚙️️"});
 
   return (
     <div className="no-scrollbar" style={{position:"fixed",bottom:0,left:0,right:0,background:"#0a0a0a",borderTop:"1px solid #1a1a1a",display:"flex",zIndex:100,height:62,overflowX:"auto"}}>

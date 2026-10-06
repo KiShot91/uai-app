@@ -45,15 +45,40 @@ function MatchComments({ match, setMatches, user }) {
 export default function MatchesTab({matches, setMatches, events, setEvents, user, locations, setLocations, bureau}) {
   const [showAdd, setShowAdd] = useState(false);
   const [editMId, setEditMId] = useState(null);
-  const [form, setForm] = useState({sportId:"pitate",opponent:"",date:"",time:"",location:"",type:"Amical",home:true,scoreBordels:"",scoreOpponent:""});
+  const [form, setForm] = useState({sportId:"pitate",opponent:"",date:"",time:"",location:"",type:"Amical",home:true,scoreBordels:"",scoreOpponent:"", isFums:false});
   
+  const [showAddLoc, setShowAddLoc] = useState(false);
+  const [locForm, setLocForm] = useState({ name:"", address:"", url:"" });
+
   const canAdd = canEdit(user, "__any__", bureau);
   const up = (k,v) => setForm(p=>({...p,[k]:v}));
   
   const safeMatches = Array.isArray(matches) ? matches : [];
-  const sorted = [...safeMatches].sort((a,b)=>(a.date || "").localeCompare(b.date || ""));
-  const pastMatches = sorted.filter(m => dL(m.date) < 0);
-  const futureMatches = sorted.filter(m => dL(m.date) >= 0);
+  
+  const now = new Date();
+  
+  // ⏱️ NOUVELLE LOGIQUE : 1H30 après ou Score défini
+  const matchesWithTimeStatus = safeMatches.map(m => {
+     let isPast = false;
+     
+     // S'il y a un score renseigné, c'est forcément passé
+     if (m.scoreBordels != null && m.scoreBordels !== "") {
+         isPast = true;
+     } else if (m.date) {
+        // On combine la date et l'heure
+        const matchDateTime = new Date(`${m.date}T${m.time || "23:59"}:00`);
+        // On rajoute 1h30 (90 minutes * 60000 ms)
+        const matchEndDateTime = new Date(matchDateTime.getTime() + 90 * 60000);
+        isPast = now > matchEndDateTime;
+     }
+     
+     return { ...m, isPast };
+  });
+
+  const sorted = [...matchesWithTimeStatus].sort((a,b)=>(a.date || "").localeCompare(b.date || ""));
+  
+  const pastMatches = sorted.filter(m => m.isPast);
+  const futureMatches = sorted.filter(m => !m.isPast);
   
   const todayRef = useRef(null);
 
@@ -64,6 +89,21 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
         }, 150);
     }
   }, []);
+
+  // 🌍 AJOUT DE LIEU
+  const saveNewLocation = async () => {
+    if(!locForm.name.trim() || !locForm.address.trim()) return alert("Nom et adresse obligatoires !");
+    const locId = `loc_${Date.now()}`;
+    const newLoc = { id: locId, name: locForm.name, address: locForm.address, url: locForm.url };
+    try {
+      const { error } = await supabase.from('locations').insert([newLoc]);
+      if (error) throw error;
+      setLocations([...locations, newLoc]);
+      up("location", locId); 
+      setShowAddLoc(false);
+      setLocForm({name:"", address:"", url:""});
+    } catch(err) { console.error(err); alert("Erreur lors de l'ajout du lieu."); }
+  };
 
   // 🎯 SYNCHRONISATION MATCH -> SUPABASE & PLANNING
   const handleSaveM = async () => {
@@ -84,7 +124,8 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
        type: form.type,
        home: form.home,
        scorebordels: sB,
-       scoreopponent: sO
+       scoreopponent: sO,
+       isfums: form.isFums
     };
 
     const dbEventPayload = {
@@ -94,7 +135,8 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
        dur: 90,
        location: form.location,
        type: typeStr,
-       title: titleStr
+       title: titleStr,
+       isfums: form.isFums
     };
 
     try {
@@ -102,14 +144,12 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
          const currentMatch = matches.find(x => x.id === editMId);
          const eventIdToUpdate = currentMatch?.planningId || editMId;
 
-         // MAJ Match
          const { error: errM } = await supabase.from('matches').update(dbMatchPayload).eq('id', editMId);
          if (errM) throw errM;
          
-         // MAJ Planning (Si l'événement existe)
          await supabase.from('events').update(dbEventPayload).eq('id', eventIdToUpdate);
          
-         setMatches(p => p.map(m => m.id === editMId ? {...m, ...form, scoreBordels: sB, scoreOpponent: sO} : m));
+         setMatches(p => p.map(m => m.id === editMId ? {...m, ...form, scoreBordels: sB, scoreOpponent: sO, isfums: form.isFums} : m));
          if (setEvents) {
             setEvents(p => p.map(e => e.id === eventIdToUpdate ? {...e, ...dbEventPayload} : e));
          }
@@ -120,27 +160,31 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
          dbMatchPayload.likedby = [];
          dbMatchPayload.comments = [];
          
-         // Ajout Match
          const { error: errM } = await supabase.from('matches').insert([dbMatchPayload]);
          if (errM) throw errM;
          
-         // Ajout Planning
          dbEventPayload.id = mId;
          await supabase.from('events').insert([dbEventPayload]);
 
-         setMatches(p => [...p, {id: mId, ...form, planningId: mId, scoreBordels: sB, scoreOpponent: sO, likes: 0, likedBy: [], comments: []}]);
+         setMatches(p => [...p, {id: mId, ...form, planningId: mId, scoreBordels: sB, scoreOpponent: sO, likes: 0, likedBy: [], comments: [], isfums: form.isFums}]);
          if (setEvents) {
             setEvents(p => [...p, {id: mId, matchId: mId, ...dbEventPayload}]);
          }
       }
-      setShowAdd(false); setEditMId(null);
+      setShowAdd(false); setEditMId(null); setShowAddLoc(false);
     } catch (err) {
       console.error(err);
       alert("Erreur lors de l'enregistrement du match.");
     }
   };
 
-  const openEdit = (m) => { setForm({...m, scoreBordels:m.scoreBordels??"", scoreOpponent:m.scoreOpponent??""}); setEditMId(m.id); setShowAdd(true); window.scrollTo(0,0); };
+  const openEdit = (m) => { 
+     setForm({...m, scoreBordels:m.scoreBordels??"", scoreOpponent:m.scoreOpponent??"", isFums: m.isfums || m.isFums || false}); 
+     setEditMId(m.id); 
+     setShowAddLoc(false); 
+     setShowAdd(true); 
+     window.scrollTo(0,0); 
+  };
   
   const delM = async (id) => { 
     if(confirm("Supprimer ce match ?")) {
@@ -162,7 +206,6 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
     }
   };
 
-  // ❤️ GESTION DES LIKES SUR SUPABASE
   const toggleLike = async (m) => {
     const isL = (m.likedBy || []).includes(user.id);
     const newLikedBy = isL ? (m.likedBy||[]).filter(x=>x!==user.id) : [...(m.likedBy||[]), user.id];
@@ -180,18 +223,22 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
 
   const renderMatch = (m) => {
     if (!m) return null; 
-    const d = dL(m.date);
+    
+    const isPast = m.isPast;
+    const dDays = dL(m.date); 
+
     const sp = Sp[m.sportId] || {l: m.sportId};
     const tc = MTC[m.type] || "#666";
     const liked = Array.isArray(m.likedBy) && m.likedBy.includes(user.id);
     const isAd = canEdit(user, m.sportId, bureau);
+    const isFums = m.isfums || m.isFums; // Récupère le booléen Fum's
     
     let bgGrad = "linear-gradient(135deg,#1a0808,#141414)"; 
     let resColor = S.red; 
     let glowStyle = {};
     let opColor = "#999"; 
 
-    if (d < 0) {
+    if (isPast) {
       if (Number(m.scoreBordels) > Number(m.scoreOpponent)) {
           bgGrad = "linear-gradient(135deg,#3a0808,#1a0303)"; 
           resColor = "#ef4444";
@@ -207,30 +254,33 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
     }
 
     return (
-      <div key={m.id} style={{opacity: d<0 ? 0.95 : 1, marginBottom: 24}}>
+      <div key={m.id} style={{opacity: isPast ? 0.95 : 1, marginBottom: 24}}>
         <Card style={{background: bgGrad, ...glowStyle}}>
           <div style={{padding:"12px 16px 10px",borderBottom:"1px solid #1a1a1a",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
             <div>
-              <div style={{fontFamily:"'Barlow Condensed'",fontSize:32,fontWeight:900,color:"white",lineHeight:1}}>{sp.l}</div>
-              <div style={{fontSize:14,color:d<=0?"#444":d<=3?"#EF4444":"#444",fontWeight:700,marginTop:4}}>{d<0?"Terminé":d===0?"Aujourd'hui":d===1?"Demain":`J-${d}`}</div>
+              <div style={{fontFamily:"'Barlow Condensed'",fontSize:32,fontWeight:900,color:"white",lineHeight:1, display:"flex", alignItems:"center"}}>
+                 {sp.l}
+                 {isFums && <span style={{marginLeft:8, fontSize:12, fontWeight:700, letterSpacing:1, background:"#1a0808", color:S.red, padding:"3px 8px", borderRadius:6, border:`1px solid ${S.red}`}}>FUM'S</span>}
+              </div>
+              <div style={{fontSize:14,color:dDays<=0?"#444":dDays<=3?"#EF4444":"#444",fontWeight:700,marginTop:6}}>{isPast?"Terminé":dDays===0?"Aujourd'hui":dDays===1?"Demain":`J-${dDays}`}</div>
             </div>
             {isAd && (
-               <button onClick={()=>openEdit(m)} style={{background:"none",border:"none",color:"#8B5CF6",fontSize:16,cursor:"pointer"}}>✏️</button>
+               <button onClick={()=>openEdit(m)} style={{background:"none",border:"none",color:"#8B5CF6",fontSize:16,cursor:"pointer"}}>✏</button>
             )}
           </div>
           <div style={{padding:"20px 14px"}}>
             <div style={{display:"flex",alignItems:"center",marginBottom:24}}>
               <div style={{flex:1,textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center"}}>
                 <div style={{fontFamily:"'Barlow Condensed'",fontSize:26,fontWeight:900,color:resColor,marginBottom:12}}>Bordel's</div>
-                {d < 0 && <div style={{fontSize:42, fontWeight:900, color:resColor, lineHeight:1}}>{m.scoreBordels!=null ? m.scoreBordels : "-"}</div>}
+                {isPast && <div style={{fontSize:42, fontWeight:900, color:resColor, lineHeight:1}}>{m.scoreBordels!=null ? m.scoreBordels : "-"}</div>}
               </div>
               <div style={{display:"flex", flexDirection:"column", alignItems:"center", padding:"0 10px", position:"relative"}}>
-                 <div style={{fontSize:32, position:"absolute", top: d<0?-5:-15, opacity:0.8}}>⚡</div>
-                 <div style={{fontFamily:"'Barlow Condensed'",fontSize:22,fontWeight:900,color:"#333",marginTop: d<0?40:15, background:bgGrad, padding:"2px 8px", zIndex:2}}>VS</div>
+                 <div style={{fontSize:32, position:"absolute", top: isPast?-5:-15, opacity:0.8}}>⚡</div>
+                 <div style={{fontFamily:"'Barlow Condensed'",fontSize:22,fontWeight:900,color:"#333",marginTop: isPast?40:15, background:bgGrad, padding:"2px 8px", zIndex:2}}>VS</div>
               </div>
               <div style={{flex:1,textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center"}}>
                 <div style={{fontFamily:"'Barlow Condensed'",fontSize:26,fontWeight:900,color:opColor,marginBottom:12}}>{m.opponent}</div>
-                {d < 0 && <div style={{fontSize:42, fontWeight:900, color:opColor, lineHeight:1}}>{m.scoreOpponent!=null ? m.scoreOpponent : "-"}</div>}
+                {isPast && <div style={{fontSize:42, fontWeight:900, color:opColor, lineHeight:1}}>{m.scoreOpponent!=null ? m.scoreOpponent : "-"}</div>}
               </div>
             </div>
 
@@ -253,18 +303,41 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
 
   return (
     <div className="fade-in">
-      <SecTitle title="Matchs" action={canAdd&&<AddBtn label="+" onClick={()=>{setForm({sportId:"pitate",opponent:"",date:"",time:"",location:"",type:"Amical",home:true,scoreBordels:"",scoreOpponent:""});setEditMId(null);setShowAdd(v=>!v);}}/>}/>
+      <SecTitle title="Matchs" action={canAdd&&<AddBtn label="+" onClick={()=>{setForm({sportId:"pitate",opponent:"",date:"",time:"",location:"",type:"Amical",home:true,scoreBordels:"",scoreOpponent:"", isFums:false});setEditMId(null);setShowAddLoc(false);setShowAdd(v=>!v);}}/>}/>
       
       {showAdd&&(
         <div style={{margin:"0 20px 14px",maxWidth:800,margin:"0 auto 16px",background:"#111",borderRadius:14,padding:18,border:`1px solid ${S.redBorder}`}}>
           <div style={{fontFamily:"'Barlow Condensed'",fontSize:17,fontWeight:900,color:S.red,letterSpacing:2,marginBottom:16}}>{editMId?"MODIFIER LE MATCH":"NOUVEAU MATCH"}</div>
           <Lbl t="Sport"/><select style={{...S.inp,marginBottom:10}} value={form.sportId} onChange={e=>up("sportId",e.target.value)}>{avSpOptions.map(s=><option key={s.id} value={s.id}>{s.l}</option>)}</select>
+          
+          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#eee",cursor:"pointer", marginBottom:14, padding:"8px", background:"#1a1a1a", borderRadius:8, border:"1px solid #333"}}>
+             <input type="checkbox" checked={form.isFums} onChange={e=>up("isFums",e.target.checked)} style={{accentColor:S.red, width:16, height:16}}/>
+             <span>Équipe Fum's (Féminines) uniquement</span>
+          </label>
+
           <Lbl t="Adversaire"/><input style={{...S.inp,marginBottom:10}} value={form.opponent} onChange={e=>up("opponent",e.target.value)}/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
             <div><Lbl t="Date"/><input type="date" style={S.inp} value={form.date} onChange={e=>up("date",e.target.value)}/></div>
             <div><Lbl t="Heure"/><input type="time" style={S.inp} value={form.time} onChange={e=>up("time",e.target.value)}/></div>
           </div>
-          <Lbl t="Lieu"/><LocationSelect value={form.location} onChange={v => up("location", v)} locations={locations} />
+          
+          <Lbl t="Lieu"/>
+          <LocationSelect value={form.location} onChange={v => up("location", v)} locations={locations} />
+          
+          <div style={{textAlign:"right", marginBottom:12, marginTop:-4}}>
+             <button onClick={()=>setShowAddLoc(!showAddLoc)} style={{background:"none",border:"none",color:"#8B5CF6",fontSize:11,fontWeight:700,cursor:"pointer",textDecoration:"underline"}}>+ Ajouter un nouveau lieu</button>
+          </div>
+          
+          {showAddLoc && (
+             <div className="fade-in" style={{background:"#1a1a1a", border:"1px solid #333", padding:12, borderRadius:8, marginBottom:16}}>
+                <div style={{fontSize:11, color:"#8B5CF6", fontWeight:700, marginBottom:8}}>NOUVEAU LIEU</div>
+                <input style={{...S.inp, marginBottom:6, padding:"8px", fontSize:12}} placeholder="Nom (ex: Complexe R. Boulin)" value={locForm.name} onChange={e=>setLocForm({...locForm, name:e.target.value})} />
+                <input style={{...S.inp, marginBottom:6, padding:"8px", fontSize:12}} placeholder="Adresse exacte" value={locForm.address} onChange={e=>setLocForm({...locForm, address:e.target.value})} />
+                <input style={{...S.inp, marginBottom:8, padding:"8px", fontSize:12}} placeholder="Lien Google Maps (optionnel)" value={locForm.url} onChange={e=>setLocForm({...locForm, url:e.target.value})} />
+                <button onClick={saveNewLocation} style={{background:"#8B5CF6", color:"white", border:"none", padding:"6px", borderRadius:6, width:"100%", cursor:"pointer", fontSize:12, fontWeight:700}}>Enregistrer ce lieu</button>
+             </div>
+          )}
+
           <Lbl t="Type"/><select style={{...S.inp,marginBottom:12}} value={form.type} onChange={e=>up("type",e.target.value)}>{MTYPES.map(t=><option key={t} value={t}>{t}</option>)}</select>
           <div style={{display:"flex",gap:8,marginBottom:14}}>{["Domicile","Extérieur"].map((l,i)=>{const on=(i===0&&form.home)||(i===1&&!form.home);return(<button key={l} onClick={()=>up("home",i===0)} style={{flex:1,padding:"9px 0",borderRadius:9,border:"1px solid",fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:600,borderColor:on?S.red:"#2a2a2a",background:on?S.redFaint:"transparent",color:on?S.red:"#555"}}>{l}</button>);})}</div>
           
@@ -277,8 +350,8 @@ export default function MatchesTab({matches, setMatches, events, setEvents, user
           </div>
 
           <div style={{display:"flex",gap:10}}>
-             <button onClick={()=>{setShowAdd(false); setEditMId(null);}} style={{flex:1,...btnStyle("#1c1c1c","#888"),border:"1px solid #2a2a2a"}}>Annuler</button>
-             {editMId && <button onClick={()=>{delM(editMId);setShowAdd(false);setEditMId(null);}} style={{flex:1,...btnStyle("#1a0505","#EF4444"),border:`1px solid ${S.redBorder}`}}>Supprimer</button>}
+             <button onClick={()=>{setShowAdd(false); setEditMId(null); setShowAddLoc(false);}} style={{flex:1,...btnStyle("#1c1c1c","#888"),border:"1px solid #2a2a2a"}}>Annuler</button>
+             {editMId && <button onClick={()=>{delM(editMId);setShowAdd(false);setEditMId(null); setShowAddLoc(false);}} style={{flex:1,...btnStyle("#1a0505","#EF4444"),border:`1px solid ${S.redBorder}`}}>Supprimer</button>}
              <button onClick={handleSaveM} style={{flex:2,...btnStyle()}}>Enregistrer</button>
           </div>
         </div>

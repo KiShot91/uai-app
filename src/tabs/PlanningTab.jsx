@@ -49,7 +49,8 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
   const [viewEv, setViewEv] = useState(null); 
   const [weekOffset, setWeekOffset] = useState(0);
   
-  const [form, setForm] = useState({sportId:"pitate",date:"",time:"",dur:90,location:"",type:"training", recurring:false});
+  // MODIF : Ajout de isFums dans le state du formulaire
+  const [form, setForm] = useState({sportId:"pitate",date:"",time:"",dur:90,location:"",type:"training", recurring:false, isFums:false});
   
   const sportDragRef = useDragScroll();
   const locDragRef = useDragScroll();
@@ -87,18 +88,19 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
     
     try {
       if (editEv) {
-        const dbPayload = { sportid: form.sportId, date: form.date, time: form.time, dur: durNum, location: form.location, type: form.type };
+        // MODIF : Ajout de isfums
+        const dbPayload = { sportid: form.sportId, date: form.date, time: form.time, dur: durNum, location: form.location, type: form.type, isfums: form.isFums };
         const { error } = await supabase.from('events').update(dbPayload).eq('id', editEv);
         if (error) throw error;
         
-        setEvents(p => p.map(e => e.id === editEv ? {...form, id: editEv, dur: durNum} : e));
+        setEvents(p => p.map(e => e.id === editEv ? {...form, id: editEv, dur: durNum, isfums: form.isFums} : e));
 
         if (setMatches && (form.type === "match" || form.type === "tournament")) {
            const matchType = form.type === "tournament" ? "Tournoi" : "Amical";
            const existingMatch = matches.find(m => m.id === editEv || m.planningId === editEv);
            if (existingMatch) {
-              await supabase.from('matches').update({sportid: form.sportId, date: form.date, time: form.time, location: form.location, type: matchType}).eq('id', existingMatch.id);
-              setMatches(p => p.map(m => (m.id === editEv || m.planningId === editEv) ? {...m, sportId: form.sportId, date: form.date, time: form.time, location: form.location, type: matchType} : m));
+              await supabase.from('matches').update({sportid: form.sportId, date: form.date, time: form.time, location: form.location, type: matchType, isfums: form.isFums}).eq('id', existingMatch.id);
+              setMatches(p => p.map(m => (m.id === editEv || m.planningId === editEv) ? {...m, sportId: form.sportId, date: form.date, time: form.time, location: form.location, type: matchType, isfums: form.isFums} : m));
            }
         }
       } else {
@@ -106,27 +108,25 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
         const matchesToInsert = [];
         let currentDate = new Date(form.date);
         
-        // 🎯 LOGIQUE SAISON : On répète jusqu'au 1er juillet de l'année scolaire en cours
         let limitDate = new Date(currentDate);
         if (form.recurring) {
-           // Si le mois de l'événement est >= Juillet (mois 6), le "1er juillet" sera l'année suivante.
            const targetYear = currentDate.getMonth() >= 6 ? currentDate.getFullYear() + 1 : currentDate.getFullYear();
            limitDate = new Date(targetYear, 6, 1); 
         }
 
         let i = 0;
-        // Tant que la date générée ne dépasse pas le 1er juillet cible
         while (currentDate <= limitDate) {
             const evId = Date.now() + i; 
             const currentStr = getLocalDateStr(currentDate);
 
+            // MODIF : Ajout de isfums
             eventsToInsert.push({
-               id: evId, sportid: form.sportId, date: currentStr, time: form.time, dur: durNum, location: form.location, type: form.type
+               id: evId, sportid: form.sportId, date: currentStr, time: form.time, dur: durNum, location: form.location, type: form.type, isfums: form.isFums
             });
 
             if (setMatches && (form.type === "match" || form.type === "tournament")) {
                matchesToInsert.push({
-                   id: evId, planningid: evId, sportid: form.sportId, opponent: "À définir", date: currentStr, time: form.time, location: form.location, type: form.type==="tournament"?"Tournoi":"Amical", home: true, scorebordels: null, scoreopponent: null, likes: 0, likedby: [], comments: []
+                   id: evId, planningid: evId, sportid: form.sportId, opponent: "À définir", date: currentStr, time: form.time, location: form.location, type: form.type==="tournament"?"Tournoi":"Amical", home: true, scorebordels: null, scoreopponent: null, likes: 0, likedby: [], comments: [], isfums: form.isFums
                });
             }
             currentDate.setDate(currentDate.getDate() + 7); 
@@ -136,12 +136,12 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
         const { error } = await supabase.from('events').insert(eventsToInsert);
         if (error) throw error;
         
-        setEvents(p => [...p, ...eventsToInsert.map(e => ({...form, id: e.id, date: e.date, dur: e.dur}))]);
+        setEvents(p => [...p, ...eventsToInsert.map(e => ({...form, id: e.id, date: e.date, dur: e.dur, isfums: e.isfums}))]);
 
         if (matchesToInsert.length > 0) {
            await supabase.from('matches').insert(matchesToInsert);
            setMatches(p => [...p, ...matchesToInsert.map(m => ({
-               id: m.id, planningId: m.planningid, sportId: m.sportid, opponent: m.opponent, date: m.date, time: m.time, location: m.location, type: m.type, home: m.home, scoreBordels: m.scorebordels, scoreOpponent: m.scoreopponent, likes: m.likes, likedBy: m.likedby, comments: m.comments
+               id: m.id, planningId: m.planningid, sportId: m.sportid, opponent: m.opponent, date: m.date, time: m.time, location: m.location, type: m.type, home: m.home, scoreBordels: m.scorebordels, scoreOpponent: m.scoreopponent, likes: m.likes, likedBy: m.likedby, comments: m.comments, isfums: m.isfums
            }))]);
         }
       }
@@ -176,7 +176,9 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
   }
 
   const handleEventClick = (ev) => { setViewEv(ev); };
-  const openEdit = (ev) => { setForm({...ev, recurring: false}); setEditEv(ev.id); setShowAdd(true); window.scrollTo(0,0); };
+  
+  // MODIF : On s'assure de bien récupérer la valeur booléenne lors de l'édition
+  const openEdit = (ev) => { setForm({...ev, recurring: false, isFums: ev.isfums || ev.isFums || false}); setEditEv(ev.id); setShowAdd(true); window.scrollTo(0,0); };
 
   const ws = getWeekStart(weekOffset);
   const days = Array.from({length:7},(_,i)=>{ const d=new Date(ws); d.setDate(ws.getDate()+i); return d; });
@@ -231,7 +233,7 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
 
   return (
     <div className="fade-in">
-      <SecTitle title="Planning" action={canAdd && <AddBtn label="+" onClick={()=>{setForm({sportId:avSpOptions[0]?.id||"pitate",date:"",time:"",dur:90,location:"",type:"training", recurring:false});setEditEv(null);setShowAdd(v=>!v);}} />} />
+      <SecTitle title="Planning" action={canAdd && <AddBtn label="+" onClick={()=>{setForm({sportId:avSpOptions[0]?.id||"pitate",date:"",time:"",dur:90,location:"",type:"training", recurring:false, isFums:false});setEditEv(null);setShowAdd(v=>!v);}} />} />
       
       <div style={{display:"flex", gap:10, alignItems:"center", padding:"0 20px 10px", flexWrap:"wrap"}}>
         <button onClick={()=>{setShowMatch(true);setShowTrain(true);setShowChallenge(true);}} style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${isAll?"#16a34a":"#333"}`,background:isAll?"#16a34a22":"#111",color:isAll?"#4ade80":"#666",fontSize:12,cursor:"pointer",fontWeight:isAll?700:400}}>Tous</button>
@@ -263,7 +265,14 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
       {showAdd && (
         <div className="fade-in" style={{margin:"0 20px 14px",background:"#111",borderRadius:14,padding:18,border:`1px solid ${S.redBorder}`}}>
           <div style={{fontFamily:"'Barlow Condensed'",fontSize:17,fontWeight:900,color:S.red,letterSpacing:2,marginBottom:16}}>{editEv?"MODIFIER L'ÉVÉNEMENT":"NOUVEL ÉVÉNEMENT"}</div>
-          <Lbl t="Sport"/><select style={{...S.inp,marginBottom:14}} value={form.sportId} onChange={e=>up("sportId",e.target.value)}>{avSpOptions.map(s=><option key={s.id} value={s.id}>{s.l}</option>)}</select>
+          <Lbl t="Sport"/><select style={{...S.inp,marginBottom:10}} value={form.sportId} onChange={e=>up("sportId",e.target.value)}>{avSpOptions.map(s=><option key={s.id} value={s.id}>{s.l}</option>)}</select>
+          
+          {/* MODIF : Checkbox FUM'S */}
+          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"#eee",cursor:"pointer", marginBottom:14, padding:"8px", background:"#1a1a1a", borderRadius:8, border:"1px solid #333"}}>
+             <input type="checkbox" checked={form.isFums} onChange={e=>up("isFums",e.target.checked)} style={{accentColor:S.red, width:16, height:16}}/>
+             <span>Équipe Fum's (Féminines) uniquement</span>
+          </label>
+
           <Lbl t="Type d'événement"/>
           <div style={{display:"flex",gap:7,marginBottom:14,flexWrap:"wrap"}}>
             {Object.entries({training:"#3B82F6", match:"#DC2626", tournament:"#F59E0B", event:"#8B5CF6"}).map(([k,c]) => (
@@ -297,7 +306,13 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
            <div className="scale-up" style={{background:S.card, width:"100%", maxWidth:400, borderRadius:16, border:`1px solid ${S.cardBorder}`, padding:24, position:"relative"}} onClick={e=>e.stopPropagation()}>
               <button onClick={()=>setViewEv(null)} style={{position:"absolute",top:15,right:15,background:"#111",border:`1px solid ${S.cardBorder}`,color:"#888",fontSize:16,width:32,height:32,borderRadius:"50%",cursor:"pointer"}}>✕</button>
               <div style={{fontSize:12, fontWeight:900, color:LOCAL_TC[viewEv.type] || "#fff", textTransform:"uppercase", letterSpacing:1}}>{LOCAL_TL[viewEv.type] || viewEv.type}</div>
-              <div style={{fontFamily:"'Barlow Condensed'",fontSize:32,fontWeight:900,color:"white",marginBottom:16}}>{Sp[viewEv.sportId]?.l||viewEv.sportId}</div>
+              
+              {/* MODIF : Affichage du logo FUM'S dans le détail de l'événement */}
+              <div style={{fontFamily:"'Barlow Condensed'",fontSize:32,fontWeight:900,color:"white",marginBottom:16, display:"flex", alignItems:"center"}}>
+                 {Sp[viewEv.sportId]?.l||viewEv.sportId}
+                 {(viewEv.isfums || viewEv.isFums) && <span style={{marginLeft:8, fontSize:12, fontWeight:700, letterSpacing:1, background:"#1a0808", color:S.red, padding:"3px 8px", borderRadius:6, border:`1px solid ${S.red}`}}>FUM'S</span>}
+              </div>
+              
               <div style={{display:"flex", flexDirection:"column", gap:12}}>
                  <div style={{display:"flex", alignItems:"center", gap:8, fontSize:15, color:"#ccc"}}>📅 {fmtDateLocal(viewEv.date)}</div>
                  <div style={{display:"flex", alignItems:"center", gap:8, fontSize:15, color:"#ccc"}}>⏰ {viewEv.time} - {endTimeStrLocal(viewEv.time, viewEv.dur)} <span style={{fontSize:12,color:"#666"}}>({viewEv.dur} min)</span></div>
@@ -397,11 +412,17 @@ export default function PlanningTab({events, setEvents, matches, setMatches, use
                   
                   {evs.map(ev => {
                     const c = LOCAL_TC[ev.type]||"#555";
+                    const isFums = ev.isfums || ev.isFums; // MODIF : Récupération correcte du booléen
+                    
                     return (
                       <div key={ev.id} onClick={()=>handleEventClick(ev)} style={{position:"absolute",left:`${ev._l}%`,width:`calc(${ev._w}% - 2px)`,top:ev._start,height:ev._end - ev._start,background:`${c}25`,border:`1px solid ${c}55`,borderRadius:8,padding:"6px",overflow:"hidden",zIndex:2,cursor:"pointer",display:"flex",flexDirection:"column",boxSizing:"border-box"}}>
                         <div style={{display:"flex", flexDirection:"column", height:"100%"}}>
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                              <div style={{fontSize:14,fontWeight:900,color:c,textTransform:"uppercase",lineHeight:1.1,fontFamily:"'Barlow Condensed'"}}>{Sp[ev.sportId]?.l||ev.sportId}</div>
+                              {/* MODIF : Affichage "FUM'S" ou "F" selon la place */}
+                              <div style={{fontSize:14,fontWeight:900,color:c,textTransform:"uppercase",lineHeight:1.1,fontFamily:"'Barlow Condensed'", display:"flex", alignItems:"center"}}>
+                                 {Sp[ev.sportId]?.l||ev.sportId}
+                                 {isFums && <span style={{marginLeft:4, fontSize:9, background:c, color:"black", padding:"1px 4px", borderRadius:4}}>FUM'S</span>}
+                              </div>
                               <div style={{fontSize:9,fontWeight:800,color:"#fff",background:"rgba(0,0,0,0.3)",padding:"2px 4px",borderRadius:4,flexShrink:0, textAlign:"center", lineHeight:1.1, marginLeft:4}}>{ev.time}<br/>-<br/>{endTimeStrLocal(ev.time,ev.dur)}</div>
                             </div>
                             <div style={{fontSize:11,fontWeight:800,color:"#fff", marginTop: "6px"}}>{LOCAL_TL[ev.type] || ev.type}</div>

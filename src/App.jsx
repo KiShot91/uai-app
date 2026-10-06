@@ -33,6 +33,11 @@ function AuthScreen({users, setUsers, onLogin}) {
   const bachsProms = ["2026", "2025", "2024", "2023"];
   const chepsList = ["Ruthénium", "Palladium", "Osmium", "Titanium"];
 
+  const isOldestAlternsPromo = (proms) => {
+     if (!proms) return false;
+     return proms === 'GM09' || proms === 'PM31';
+  };
+
   const login = () => {
     const u = users.find(u => u.email===f.email && u.password===f.password);
     if(u) { onLogin(u); if(remember) localStorage.setItem("uai_user", u.id); } 
@@ -45,10 +50,12 @@ function AuthScreen({users, setUsers, onLogin}) {
     
     if (regType === 'gadz') {
        if (!f.bucque) return setErr("La Bucque est obligatoire *");
-       // ICI LA MODIFICATION : On vérifie l'exemption, mais le message reste générique
        if (!isFamsExempt(f.proms) && f.fams.length===0) return setErr("La Fam's est obligatoire");
     }
-    if (regType === 'alterns' && f.fams.length===0) return setErr("Le Chep's est obligatoire *");
+    
+    if (regType === 'alterns' && f.fams.length === 0 && !isOldestAlternsPromo(f.proms)) {
+        return setErr("Le Chep's est obligatoire *");
+    }
 
     const bucqueFinal = regType === 'gadz' ? f.bucque : "";
     const famsFinal = regType === 'bachs' ? [] : f.fams;
@@ -89,13 +96,11 @@ function AuthScreen({users, setUsers, onLogin}) {
     }
   };
 
-  // 🔐 SYSTÈME DE MOT DE PASSE INTELLIGENT
   const sendReset = async () => { 
     if(!resetContact) return setErr("Entrez une information valide"); 
     
     const q = resetContact.toLowerCase().trim();
     
-    // On cherche l'utilisateur via différentes correspondances
     const matchingUsers = users.filter(u => {
        const fullName = `${u.prenom} ${u.nom}`.toLowerCase();
        const reverseName = `${u.nom} ${u.prenom}`.toLowerCase();
@@ -114,7 +119,6 @@ function AuthScreen({users, setUsers, onLogin}) {
     const targetUser = matchingUsers[0];
 
     try {
-      // LE MESSAGE PRÉ-GÉNÉRÉ QUE TU POURRAS COPIER-COLLER
       const textToCopy = `Salut ${targetUser.bucque || targetUser.prenom}, ton identifiant est "${targetUser.email}" et ton mot de passe est "${targetUser.password}".`;
       
       const resetAlert = {
@@ -178,7 +182,6 @@ function AuthScreen({users, setUsers, onLogin}) {
             {mode==="register" && !regType && (
                <div className="fade-in" style={{display:"flex", flexDirection:"column", gap:10, marginTop:10}}>
                   <div style={{color:"#aaa", textAlign:"center", marginBottom:4, fontSize:13, fontWeight:600, textTransform:"uppercase", letterSpacing:1}}>Sélectionnez votre profil</div>
-                  {/* MODIF PGE ICI */}
                   <button onClick={() => { setRegType("gadz"); setF(p=>({...p, proms:String(maxPromo)})); setErr(""); }} style={{...btnStyle("#1a1a1a", "white"), padding:"14px", border:"1px solid #333", fontSize:16}}>PGE</button>
                   <button onClick={() => { setRegType("alterns"); setF(p=>({...p, proms:""})); setErr(""); }} style={{...btnStyle("#1a1a1a", "white"), padding:"14px", border:"1px solid #333", fontSize:16}}>Altern's</button>
                   <button onClick={() => { setRegType("bachs"); setF(p=>({...p, proms:""})); setErr(""); }} style={{...btnStyle("#1a1a1a", "white"), padding:"14px", border:"1px solid #333", fontSize:16}}>Bachs</button>
@@ -208,11 +211,10 @@ function AuthScreen({users, setUsers, onLogin}) {
                 </div>
                 
                 <div style={{display:"flex", gap:10, alignItems:"flex-start"}}>
-                   {/* LABEL FAM'S OBLIGATOIRE MIS À JOUR */}
                    {regType === "gadz" && <div style={{flex:1}}><Lbl t={`Fam's${isFamsExempt(f.proms)?" (Optionnel)":" *"}`}/><FamsSelect value={f.fams} onChange={v=>up("fams",v)} /></div>}
                    {regType === "alterns" && (
                       <div style={{flex:1}}>
-                         <Lbl t="Chep's *"/>
+                         <Lbl t={`Chep's ${!isOldestAlternsPromo(f.proms) ? "*" : "(Optionnel)"}`}/>
                          <select style={S.inp} value={f.fams[0] || ""} onChange={e=>up("fams", [e.target.value])}>
                             <option value="">Sélectionner...</option>
                             {chepsList.map(c => <option key={c} value={c}>{c}</option>)}
@@ -568,8 +570,6 @@ export default function UAIApp() {
         
         <div key={tab} className={slideDir} style={{flex: 1, paddingBottom: 68}}>
           {tab==="planning"&&<PlanningTab events={events} setEvents={setEvents} matches={matches} setMatches={setMatches} user={user} locations={locations} setLocations={setLocations} bureau={bureau} isMobile={typeof window!=="undefined"?window.innerWidth<768:false} winH={typeof window!=="undefined"?window.innerHeight:800}/>}
-          
-          {/* C'est ici que j'ai injecté les props onViewProfile={setViewProfileId} users={users} */}
           {tab==="matches"&&<MatchesTab matches={matches} setMatches={setMatches} events={events} setEvents={setEvents} user={user} locations={locations} setLocations={setLocations} bureau={bureau} onViewProfile={setViewProfileId} users={users}/>}
           {tab==="news"&&<NewsTab news={news} setNews={setNews} user={user} bureau={bureau} onViewProfile={setViewProfileId} users={users}/>}
           

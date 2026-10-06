@@ -3,7 +3,6 @@ import { supabase } from "../supabase";
 import { isDev, isBurs, readFile, dn, fmtDate, S, btnStyle, SPORTS, Sp } from "../config";
 import { SecTitle, AddBtn, Card, Tag, Lbl, Av } from "../components/Shared";
 
-// 💬 Composant local de commentaires pour les News (lié à Supabase)
 function NewsComments({ item, setNews, user, onViewProfile, users }) {
   const [txt, setTxt] = useState("");
   const comments = item.comments || [];
@@ -26,16 +25,24 @@ function NewsComments({ item, setNews, user, onViewProfile, users }) {
       <div style={{fontSize:10,color:"#444",letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>COMMENTAIRES - {comments.length}</div>
       {comments.map(c => {
          const commenter = users ? users.find(u => u.id === c.userId) : null;
-         const avatarUrl = commenter?.avatar || c.userAvatar;
+         const avatarUrl = commenter ? commenter.avatar : null;
          
          return (
             <div key={c.id} style={{marginBottom:12,display:"flex",gap:10}}>
-              <div onClick={() => onViewProfile && onViewProfile(c.userId)} style={{cursor: onViewProfile ? "pointer" : "default"}}>
+              <div 
+                onClick={(e) => { e.stopPropagation(); if (onViewProfile && c.userId) onViewProfile(c.userId); }} 
+                style={{cursor: onViewProfile ? "pointer" : "default"}}
+              >
                  <Av src={avatarUrl} name={c.userName} size={30} color={S.red} />
               </div>
               <div style={{flex:1}}>
                 <div style={{display:"flex",gap:8,marginBottom:3,alignItems:"center"}}>
-                   <span onClick={() => onViewProfile && onViewProfile(c.userId)} style={{fontSize:12,fontWeight:700, cursor: onViewProfile ? "pointer" : "default"}}>{c.userName}</span>
+                   <span 
+                     onClick={(e) => { e.stopPropagation(); if (onViewProfile && c.userId) onViewProfile(c.userId); }} 
+                     style={{fontSize:12,fontWeight:700, cursor: onViewProfile ? "pointer" : "default"}}
+                   >
+                     {c.userName}
+                   </span>
                    <span style={{fontSize:10,color:"#333"}}>{new Date(c.time).toLocaleDateString("fr-FR",{day:"numeric",month:"short"})}</span>
                 </div>
                 <div style={{fontSize:13,color:"#aaa",lineHeight:1.6,marginBottom:6}}>{c.text}</div>
@@ -105,7 +112,6 @@ function NewsDetail({n, user, setNews, onClose, bureau, toggleLike, delN, onView
   );
 }
 
-// Ajout de onViewProfile et users dans les props
 export default function NewsTab({news, setNews, user, bureau, onViewProfile, users}) {
   const [showAdd, setShowAdd] = useState(false);
   const [editNId, setEditNId] = useState(null);
@@ -245,7 +251,7 @@ export default function NewsTab({news, setNews, user, bureau, onViewProfile, use
                 <div style={{fontSize:13,color:"#bbb",lineHeight:1.6,marginBottom:12, maxHeight:"3.2em", overflow:"hidden", textOverflow:"ellipsis"}}>{n.content}</div>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",borderTop:"1px solid #1f1f1f",paddingTop:10}}>
                   <div style={{display:"flex",gap:14,alignItems:"center"}}>
-                     <div onClick={(e) => { e.stopPropagation(); onViewProfile && onViewProfile(n.authorId); }} style={{display:"flex", alignItems:"center", gap:8, cursor: onViewProfile ? "pointer" : "default"}}>
+                     <div onClick={(e) => { e.stopPropagation(); if (onViewProfile && n.authorId) onViewProfile(n.authorId); }} style={{display:"flex", alignItems:"center", gap:8, cursor: onViewProfile ? "pointer" : "default"}}>
                         <Av src={authorAvatar} name={n.authorName} size={24} />
                         <span style={{fontSize:12,color:"#ccc", fontWeight:600}}>{n.authorName}</span>
                      </div>
